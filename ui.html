@@ -1,0 +1,614 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; font-size: 13px; background: #fff; color: #1a1a1a; }
+
+  .container { padding: 16px; display: flex; flex-direction: column; gap: 12px; }
+
+  .title { font-size: 15px; font-weight: 600; color: #111; }
+  .subtitle { font-size: 11px; color: #888; margin-top: 2px; }
+
+  .mode-bar {
+    display: flex; align-items: center; gap: 8px;
+    padding: 10px 12px; border-radius: 10px;
+    font-size: 12px; font-weight: 500;
+    transition: background 0.2s, border-color 0.2s;
+  }
+  .mode-bar.create {
+    background: #f5f5f7; border: 1px solid #e0e0e0; color: #555;
+  }
+  .mode-bar.edit {
+    background: #eef1ff; border: 1px solid #c7d0f8; color: #3b5ce6;
+  }
+  .mode-dot {
+    width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0;
+  }
+  .mode-bar.create .mode-dot { background: #bbb; }
+  .mode-bar.edit   .mode-dot { background: #3b5ce6; }
+  .mode-frame-name {
+    flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .mode-clear {
+    background: none; border: none; color: #999; cursor: pointer;
+    font-size: 14px; padding: 0 2px; line-height: 1;
+  }
+  .mode-clear:hover { color: #555; }
+
+  textarea {
+    width: 100%; height: 120px; border: 1px solid #e0e0e0; border-radius: 8px;
+    padding: 10px 12px; font-size: 13px; resize: none; outline: none;
+    line-height: 1.5; color: #1a1a1a;
+    transition: border-color 0.15s;
+  }
+  textarea:focus { border-color: #3b5ce6; }
+  textarea::placeholder { color: #aaa; }
+
+  .btn-generate {
+    width: 100%; height: 40px; background: #3b5ce6; color: white;
+    border: none; border-radius: 8px; font-size: 14px; font-weight: 500;
+    cursor: pointer; transition: background 0.15s;
+  }
+  .btn-generate:hover { background: #2f4dd4; }
+  .btn-generate:disabled { background: #c0c8f0; cursor: not-allowed; }
+  .btn-test {
+    width: 100%; height: 36px; background: #f5f5f7; color: #555;
+    border: 1px solid #e0e0e0; border-radius: 8px; font-size: 13px;
+    cursor: pointer; transition: background 0.15s;
+  }
+  .btn-test:hover { background: #eaeaed; }
+
+  .status {
+    min-height: 20px; font-size: 12px; color: #666; text-align: center;
+    padding: 4px 0;
+  }
+  .status.error { color: #e53935; }
+  .status.success { color: #2e7d32; }
+
+  details { border: 1px solid #eee; border-radius: 8px; overflow: hidden; }
+  summary {
+    padding: 10px 12px; font-size: 12px; color: #666; cursor: pointer;
+    user-select: none; list-style: none;
+  }
+  summary::-webkit-details-marker { display: none; }
+  summary::before { content: '⚙ '; }
+  .settings-body { padding: 12px; display: flex; flex-direction: column; gap: 8px; border-top: 1px solid #eee; }
+  .settings-body label { font-size: 11px; color: #888; }
+  .settings-body input {
+    width: 100%; height: 36px; border: 1px solid #e0e0e0; border-radius: 6px;
+    padding: 0 10px; font-size: 13px; outline: none;
+  }
+  .settings-body input:focus { border-color: #3b5ce6; }
+  .btn-save {
+    height: 32px; background: #f5f5f7; border: 1px solid #e0e0e0;
+    border-radius: 6px; font-size: 12px; cursor: pointer; color: #444;
+  }
+  .btn-save:hover { background: #eaeaed; }
+
+  .examples { display: flex; flex-direction: column; gap: 4px; }
+  .example-label { font-size: 11px; color: #888; }
+  .chips { display: flex; flex-wrap: wrap; gap: 6px; }
+  .chip {
+    background: #f0f3ff; color: #3b5ce6; border: none; border-radius: 20px;
+    padding: 4px 10px; font-size: 11px; cursor: pointer; transition: background 0.1s;
+  }
+  .chip:hover { background: #dde4ff; }
+</style>
+</head>
+<body>
+<div class="container">
+  <div>
+    <div class="title">MOIN AI Design</div>
+    <div class="subtitle">자연어로 화면을 만들고 수정합니다</div>
+  </div>
+
+  <!-- 모드 표시 바 -->
+  <div class="mode-bar create" id="modeBar">
+    <div class="mode-dot"></div>
+    <div class="mode-frame-name" id="modeLabel">새 화면 만들기</div>
+  </div>
+
+  <!-- 예시 칩 (생성 모드만) -->
+  <div class="examples" id="examplesArea">
+    <div class="example-label">예시</div>
+    <div class="chips">
+      <button class="chip" onclick="setPrompt(this.textContent)">당발송금 목록 페이지</button>
+      <button class="chip" onclick="setPrompt(this.textContent)">잔액 현황 목록</button>
+      <button class="chip" onclick="setPrompt(this.textContent)">알림 메일 설정 페이지</button>
+      <button class="chip" onclick="setPrompt(this.textContent)">대량 송금 목록</button>
+    </div>
+  </div>
+
+  <!-- 편집 예시 칩 (편집 모드만) -->
+  <div class="examples" id="editExamplesArea" style="display:none;">
+    <div class="example-label">빠른 수정</div>
+    <div class="chips">
+      <button class="chip" onclick="setPrompt(this.textContent)">목 데이터 채워줘</button>
+      <button class="chip" onclick="setPrompt(this.textContent)">row 10개로 늘려</button>
+      <button class="chip" onclick="setPrompt(this.textContent)">모달 추가</button>
+      <button class="chip" onclick="setPrompt(this.textContent)">로딩 상태로</button>
+      <button class="chip" onclick="setPrompt(this.textContent)">처리중 탭으로</button>
+      <button class="chip" onclick="setPrompt(this.textContent)">완료 탭으로</button>
+      <button class="chip" onclick="setPrompt(this.textContent)">실패 탭으로</button>
+    </div>
+  </div>
+
+  <textarea id="prompt" placeholder="화면을 설명해주세요.&#10;예: 당발송금 목록 페이지. 컬럼은 송금번호, 수취인, 금액, 상태, 처리일시."></textarea>
+
+  <button class="btn-generate" id="btnGenerate" onclick="generate()">생성하기</button>
+  <button class="btn-test" id="btnTest" onclick="generateTest()">테스트 모드 (API 없이)</button>
+
+  <div class="status" id="status"></div>
+  <div id="logPanel" style="font-size:10px;color:#888;background:#f9f9f9;border:1px solid #eee;border-radius:6px;padding:6px 8px;max-height:80px;overflow-y:auto;display:none;white-space:pre-wrap;word-break:break-all;"></div>
+
+  <details>
+    <summary>API 설정</summary>
+    <div class="settings-body">
+      <label>Anthropic API Key</label>
+      <input type="password" id="apiKey" placeholder="sk-ant-..." />
+      <button class="btn-save" onclick="saveKey()">저장</button>
+    </div>
+  </details>
+</div>
+
+<script>
+// ─── 저장된 키 로드 ─────────────────────────────────────────────────────────
+let refImageBase64 = null;
+let refDesignJson = null;
+let refMode = null; // 'edit' | 'image' | null
+let refNodeId = null;
+
+window.onload = () => {
+  const saved = localStorage.getItem('moin_api_key');
+  if (saved) document.getElementById('apiKey').value = saved;
+};
+
+function getSelection() {
+  parent.postMessage({ pluginMessage: { type: 'GET_SELECTION' } }, '*');
+  setStatus('선택된 프레임 확인 중...');
+}
+
+function setMode(mode, frameName) {
+  const bar = document.getElementById('modeBar');
+  const label = document.getElementById('modeLabel');
+  const btn = document.getElementById('btnGenerate');
+  const examples = document.getElementById('examplesArea');
+  const editExamples = document.getElementById('editExamplesArea');
+  const prompt = document.getElementById('prompt');
+
+  if (mode === 'edit') {
+    bar.className = 'mode-bar edit';
+    label.innerHTML = '편집 중: <strong>' + frameName + '</strong>&nbsp;&nbsp;<button class="mode-clear" onclick="clearRef()">✕ 새로 만들기</button>';
+    btn.textContent = '수정하기';
+    examples.style.display = 'none';
+    editExamples.style.display = '';
+    prompt.placeholder = '어떻게 바꿀까요?\n예: 목 데이터 채워줘, row 10개로, 모달 추가';
+  } else {
+    bar.className = 'mode-bar create';
+    label.textContent = '새 화면 만들기';
+    btn.textContent = '생성하기';
+    examples.style.display = '';
+    editExamples.style.display = 'none';
+    prompt.placeholder = '화면을 설명해주세요.\n예: 당발송금 목록 페이지. 컬럼은 송금번호, 수취인, 금액, 상태, 처리일시.';
+  }
+}
+
+function clearRef() {
+  refImageBase64 = null;
+  refDesignJson = null;
+  refMode = null;
+  refNodeId = null;
+  setMode('create');
+  setStatus('');
+}
+
+function setPrompt(text) {
+  document.getElementById('prompt').value = text;
+}
+
+function saveKey() {
+  const key = document.getElementById('apiKey').value.trim();
+  if (key) { localStorage.setItem('moin_api_key', key); setStatus('API Key 저장됨', 'success'); }
+}
+
+function setStatus(msg, type = '') {
+  const el = document.getElementById('status');
+  el.textContent = msg;
+  el.className = 'status ' + type;
+}
+
+function addLog(msg) {
+  const panel = document.getElementById('logPanel');
+  panel.style.display = 'block';
+  panel.textContent += '[' + new Date().toLocaleTimeString() + '] ' + msg + '\n';
+  panel.scrollTop = panel.scrollHeight;
+}
+
+// ─── 클라이언트 패처 ─────────────────────────────────────────────────────────
+// Claude 없이 JSON 직접 수정. 패턴 감지 실패 시 false 반환 → 서버 fallback
+
+function findNodes(obj, type, results) {
+  results = results || [];
+  if (!obj || typeof obj !== 'object') return results;
+  if (obj.type === type) results.push(obj);
+  (obj.children || obj.sections || []).forEach(function(c) { findNodes(c, type, results); });
+  return results;
+}
+
+const MOCK_DATA = {
+  '송금번호': function(i) { return 'RS-20260406-' + String(i+1).padStart(3,'0'); },
+  '번호':     function(i) { return String(20260001 + i); },
+  '수취인':   function(i) { return ['Tanaka Hiroshi','Kim Minsu','Wang Lei','Santos Maria','Nguyen Van A'][i%5]; },
+  '이름':     function(i) { return ['홍길동','김민수','이영희','박철수','최지우'][i%5]; },
+  '금액':     function(i) { return ['¥ 120,000','₱ 45,000','¥ 88,000','₱ 32,000','¥ 200,000'][i%5]; },
+  '수취국가': function(i) { return ['일본','필리핀','중국','필리핀','일본'][i%5]; },
+  '수취은행': function(i) { return ['MUFG Bank','BDO Unibank','ICBC','BPI','Sumitomo'][i%5]; },
+  '계좌':     function(i) { return '1234-56-' + String(7890000+i); },
+  '상태':     function(i) { return ['완료','처리중','실패','완료','취소'][i%5]; },
+  '처리일시': function(i) { return '2026.04.0' + (i+1) + ' 14:' + String(30-i*3).padStart(2,'0'); },
+  '날짜':     function(i) { return '2026.04.0' + (i+1); },
+  '일시':     function(i) { return '2026.04.0' + (i+1) + ' 09:00'; },
+  '메모':     function(i) { return ['정기송금','긴급','일반송금','정기','수수료'][i%5]; },
+  '버튼':     function()  { return '조회'; },
+  '상세':     function()  { return '조회'; },
+};
+
+function mockCellValue(colLabel, rowIndex) {
+  for (var key in MOCK_DATA) {
+    if (colLabel.indexOf(key) !== -1) return MOCK_DATA[key](rowIndex);
+  }
+  return '-';
+}
+
+function patchDesign(prompt, designJsonStr) {
+  var design;
+  try { design = JSON.parse(designJsonStr); } catch(e) { return false; }
+  var p = prompt.trim();
+  var changed = false;
+
+  var tables = findNodes(design, 'table');
+
+  // ── row 수 변경: "row 5개", "행 10개로", "5행으로" ─────────────────────────
+  var rowMatch = p.match(/(\d+)\s*개?\s*(row|행|줄|로우)/i) || p.match(/(row|행|줄|로우)\s*(\d+)\s*개?/i);
+  if (rowMatch) {
+    var newCount = parseInt(rowMatch[1] || rowMatch[2], 10);
+    if (!isNaN(newCount) && tables.length > 0) {
+      tables.forEach(function(t) { t.rowCount = newCount; if (t.rows) t.rows = t.rows.slice(0, newCount); });
+      changed = true;
+      addLog('패치: rowCount → ' + newCount);
+    }
+  }
+
+  // ── 목 데이터 채우기 ────────────────────────────────────────────────────────
+  if (/목\s*데이터|mock|샘플\s*데이터|데이터\s*채워|데이터\s*넣어/.test(p)) {
+    tables.forEach(function(t) {
+      var count = t.rowCount || 5;
+      var cols = t.columns || [];
+      t.rows = [];
+      for (var r = 0; r < count; r++) {
+        var row = cols.map(function(col) { return mockCellValue(col.label || '', r); });
+        t.rows.push(row);
+      }
+      changed = true;
+    });
+    if (changed) addLog('패치: 목 데이터 ' + (tables[0] ? tables[0].rowCount : 0) + '행 생성');
+  }
+
+  // ── 테이블 상태 변경 ────────────────────────────────────────────────────────
+  var stateMap = { '로딩': 'loading', 'loading': 'loading', '에러': 'error', 'error': 'error', '기본': 'default', 'default': 'default' };
+  for (var k in stateMap) {
+    if (p.indexOf(k) !== -1 && /상태/.test(p)) {
+      tables.forEach(function(t) { t.state = stateMap[k]; });
+      if (tables.length > 0) { changed = true; addLog('패치: table state → ' + stateMap[k]); }
+      break;
+    }
+  }
+
+  // ── 모달 추가 ───────────────────────────────────────────────────────────────
+  if (/모달\s*(추가|열기|열린|보여|띄워|표시)/.test(p)) {
+    var hasSections = design.sections && design.sections.length > 0;
+    var alreadyHas = (design.sections || []).some(function(s) { return s.type === 'modal'; });
+    if (hasSections && !alreadyHas) {
+      var titleMatch = p.match(/["""](.*?)["""]/);
+      design.sections.push({
+        type: 'modal',
+        title: titleMatch ? titleMatch[1] : '확인',
+        description: '이 작업을 진행하시겠습니까?',
+        ctaLabel: '확인',
+        dismissLabel: '취소',
+      });
+      changed = true;
+      addLog('패치: modal 섹션 추가');
+    }
+  }
+
+  // ── 모달 제거 ───────────────────────────────────────────────────────────────
+  if (/모달\s*(닫기|제거|없애|삭제)/.test(p)) {
+    var before = (design.sections || []).length;
+    design.sections = (design.sections || []).filter(function(s) { return s.type !== 'modal'; });
+    if (design.sections.length < before) { changed = true; addLog('패치: modal 제거'); }
+  }
+
+  // ── 탭 active 변경: "처리중 탭", "완료 탭으로" ──────────────────────────────
+  var tabs = findNodes(design, 'tab');
+  if (tabs.length > 0) {
+    var tabKeywords = ['전체','처리중','완료','실패','취소','대기','승인','반려'];
+    for (var ti = 0; ti < tabKeywords.length; ti++) {
+      var kw = tabKeywords[ti];
+      if (p.indexOf(kw) !== -1 && /탭/.test(p)) {
+        tabs.forEach(function(tab) {
+          if (tab.items && tab.items.indexOf(kw) !== -1) {
+            tab.activeIndex = tab.items.indexOf(kw);
+            changed = true;
+            addLog('패치: 탭 active → ' + kw);
+          }
+        });
+        break;
+      }
+    }
+  }
+
+  return changed ? design : false;
+}
+
+// ─── 생성 ────────────────────────────────────────────────────────────────────
+async function generate() {
+  const prompt = document.getElementById('prompt').value.trim();
+  if (!prompt) { setStatus('화면 설명을 입력해주세요', 'error'); return; }
+
+  document.getElementById('btnGenerate').disabled = true;
+  addLog('generate() mode=' + refMode + ' nodeId=' + refNodeId);
+
+  // ── 편집 모드: 클라이언트 패치 먼저 시도 ─────────────────────────────────
+  if (refMode === 'edit' && refDesignJson) {
+    const patched = patchDesign(prompt, refDesignJson);
+    if (patched) {
+      refDesignJson = JSON.stringify(patched);
+      setStatus('Figma에 렌더링 중... (즉시 패치)');
+      parent.postMessage({ pluginMessage: { type: 'RENDER_EDIT', design: patched, nodeId: refNodeId } }, '*');
+      return;
+    }
+    addLog('패턴 미감지 → Claude fallback');
+  }
+
+  const statusMsg = refMode === 'edit' ? 'Claude가 편집 중...' : 'Claude가 화면 구조를 분석 중...';
+  setStatus(statusMsg);
+
+  try {
+    const body = { prompt };
+    if (refMode === 'edit' && refDesignJson) { body.designJson = refDesignJson; }
+    if (refMode === 'image' && refImageBase64) { body.imageBase64 = refImageBase64; }
+
+    const response = await fetch('http://localhost:3333/generate', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+
+    if (!response.ok) throw new Error('서버 오류: ' + response.status);
+
+    const data = await response.json();
+    if (data.error) throw new Error(data.error);
+    const design = data.design;
+
+    // 편집 모드면 서버 응답 JSON도 저장
+    if (refMode === 'edit') refDesignJson = JSON.stringify(design);
+
+    setStatus('Figma에 렌더링 중...');
+    const renderType = refMode === 'edit' ? 'RENDER_EDIT' : 'RENDER';
+    parent.postMessage({ pluginMessage: { type: renderType, design, nodeId: refNodeId } }, '*');
+
+  } catch (err) {
+    setStatus('오류: ' + err.message, 'error');
+    document.getElementById('btnGenerate').disabled = false;
+  }
+}
+
+// ─── 플러그인 코드에서 메시지 수신 ──────────────────────────────────────────
+window.addEventListener('message', (event) => {
+  const msg = event.data.pluginMessage;
+  if (!msg) return;
+  if (msg.type === 'SELECTION') {
+    if (!msg.name) {
+      // 선택 해제 — 이미 편집 모드면 유지, 아니면 초기화
+      if (refMode !== 'edit') clearRef();
+      return;
+    }
+    if (msg.mode === 'edit') {
+      refMode = msg.mode;
+      refNodeId = msg.nodeId;
+      refDesignJson = msg.designJson;
+      setMode('edit', msg.name);
+      setStatus('');
+    }
+    // 플러그인으로 만들지 않은 프레임은 무시
+  }
+  if (msg.type === 'LOG') { addLog(msg.msg); }
+  if (msg.type === 'WARN') {
+    addLog('⚠ ' + msg.msg);
+    setStatus('⚠ ' + msg.msg, 'error');
+    document.getElementById('btnGenerate').disabled = false;
+  }
+  if (msg.type === 'DONE') {
+    if (msg.info) addLog('DONE: ' + msg.info);
+    setStatus('완료! Figma를 확인하세요 ✓', 'success');
+    document.getElementById('btnGenerate').disabled = false;
+  }
+  if (msg.type === 'ERROR') {
+    addLog('ERROR: ' + msg.error);
+    setStatus('렌더링 오류: ' + msg.error, 'error');
+    document.getElementById('btnGenerate').disabled = false;
+  }
+});
+
+// ─── 테스트 모드 ─────────────────────────────────────────────────────────────
+function generateTest() {
+  const testDesign = {
+    "pageName": "당발송금 목록",
+    "width": 1440,
+    "height": 900,
+    "sections": [
+      {
+        "type": "lnb",
+        "menuItems": [
+          { "label": "당발송금", "active": true },
+          { "label": "타발송금", "active": false },
+          { "label": "잔액", "active": false },
+          { "label": "집금관리", "active": false },
+          { "label": "문의", "active": false }
+        ]
+      },
+      {
+        "type": "main",
+        "padding": 16,
+        "gap": 16,
+        "children": [
+          {
+            "type": "card",
+            "title": "당발송금 목록",
+            "children": [
+              {
+                "type": "top",
+                "size": "large",
+                "title": "당발송금 목록",
+                "description": "총 124건",
+                "rightButtons": [
+                  { "label": "엑셀 다운로드", "variant": "tertiary2" },
+                  { "label": "송금 신청", "variant": "primary" }
+                ]
+              },
+              {
+                "type": "searchbar"
+              },
+              {
+                "type": "filterbar",
+                "dropdowns": [
+                  { "placeholder": "전체 상태" },
+                  { "placeholder": "기간 선택" },
+                  { "placeholder": "수취국가" }
+                ]
+              },
+              {
+                "type": "tab",
+                "items": ["전체", "처리중", "완료", "실패", "취소"]
+              },
+              {
+                "type": "chipgroup",
+                "items": ["전체", "송금", "수납", "환전"]
+              },
+              {
+                "type": "spinner",
+                "size": 32
+              },
+              {
+                "type": "table",
+                "state": "default",
+                "rowCount": 5,
+                "columns": [
+                  { "label": "송금번호", "width": 160, "type": "text" },
+                  { "label": "수취인", "width": 160, "type": "text" },
+                  { "label": "수취국가", "width": 120, "type": "text" },
+                  { "label": "금액", "width": 120, "type": "text" },
+                  { "label": "상태", "width": 120, "type": "badge" },
+                  { "label": "처리일시", "width": "fill", "type": "text" },
+                  { "label": "상세보기", "width": 100, "type": "button" }
+                ],
+                "rows": [
+                  ["RS-20260323-001", "Tanaka Hiroshi", "일본", "¥ 120,000", "완료", "2026.03.23 14:30", "조회"],
+                  ["RS-20260323-002", "Kim Minsu", "필리핀", "₱ 45,000", "처리중", "2026.03.23 13:15", "조회"],
+                  ["RS-20260322-001", "Wang Lei", "중국", "¥ 88,000", "실패", "2026.03.22 16:42", "조회"],
+                  ["RS-20260322-002", "Santos Maria", "필리핀", "₱ 32,000", "완료", "2026.03.22 10:00", "조회"],
+                  ["RS-20260321-001", "Yamamoto Ken", "일본", "¥ 200,000", "취소", "2026.03.21 09:30", "조회"]
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  };
+  setStatus('테스트 렌더링 중...');
+  document.getElementById('btnTest').disabled = true;
+  parent.postMessage({ pluginMessage: { type: 'RENDER', design: testDesign } }, '*');
+}
+
+// ─── 시스템 프롬프트 ─────────────────────────────────────────────────────────
+const SYSTEM_PROMPT = `You are an AI designer for MOIN, a B2B remittance/payment SaaS platform.
+Output ONLY a valid JSON object. No explanation, no markdown text outside the JSON block.
+
+## Layout Rules
+- All pages use: LNB (240px, white) + Main content area (flex-1, bg #F5F5F7)
+- Main area padding: 16px, gap between sections: 16px
+- LNB always has a logo area at top + menu items
+- LNB menu items MUST use only these exact labels: 당발송금, 타발송금, 잔액, 집금관리, 문의, 설정, 내 계정
+- Sub-pages (e.g. 대량송금, 당발송금 목록) → set parent menu active (e.g. 당발송금)
+- The active menu item should match the page context
+
+## Button Hierarchy
+- primary: main action, 1 per screen, brand color (e.g. 저장, 확인, 생성)
+- secondary: cancel or alternative path
+- tertiary: optional low-priority (e.g. 내보내기, 더보기)
+- Destructive actions (삭제, 초기화) must NOT be primary
+
+## Component Options
+Top sizes: "xl" | "large" | "medium" | "small"
+Table states: "default" | "loading" | "error"
+Column types: "text" | "badge" | "button"
+  - text: 일반 텍스트 (기본값, 대부분의 컬럼)
+  - badge: 상태 배지 (상태, 승인여부 등 enum 컬럼)
+  - button: 액션 버튼 (상세보기, 다운로드 등)
+Button variants: "primary" | "secondary" | "tertiary"
+
+## JSON Schema
+\`\`\`json
+{
+  "pageName": "화면 이름",
+  "width": 1440,
+  "height": 900,
+  "sections": [
+    {
+      "type": "lnb",
+      "menuItems": [
+        { "label": "메뉴명", "active": false }
+      ]
+    },
+    {
+      "type": "main",
+      "padding": 16,
+      "gap": 16,
+      "children": [
+        {
+          "type": "card",
+          "title": "카드 제목",
+          "children": [
+            {
+              "type": "top",
+              "size": "large",
+              "title": "섹션 제목",
+              "description": "총 0건",
+              "rightButtons": [{ "label": "내보내기", "variant": "tertiary" }]
+            },
+            {
+              "type": "table",
+              "state": "default",
+              "rowCount": 3,
+              "columns": [
+                { "label": "컬럼명", "width": 120, "type": "text" },
+                { "label": "컬럼명", "width": "fill", "type": "text" },
+                { "label": "상태", "width": 100, "type": "badge" }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
+\`\`\`
+
+Respond with ONLY the JSON, wrapped in \`\`\`json ... \`\`\` block.`;
+</script>
+</body>
+</html>
