@@ -558,15 +558,49 @@ async function renderTable(parent, config) {
         cell.resize(w, 48);
       }
 
-      // 셀 텍스트 오버라이드
+      // 셀 값 오버라이드
       const cellValue = (rowData && rowData[ci] !== undefined) ? String(rowData[ci]) : null;
       if (cellValue && cellValue !== '') {
-        const textNodes = cell.findAll(function(n) { return n.type === 'TEXT'; });
-        if (textNodes.length > 0) {
+        if (colType === 'badge') {
+          // ContentsCell 안의 StatusBadge 인스턴스 찾기
+          var badgeStatusMap = {
+            'backlog': 'backlog', '대기': 'backlog',
+            'in progress': 'in progress', 'inProgress': 'in progress', '처리중': 'in progress', '진행중': 'in progress',
+            'done': 'done', '완료': 'done',
+            'error': 'error', '실패': 'error', '에러': 'error',
+            'pending': 'pending', '보류': 'pending',
+          };
+          var badgeStatus = badgeStatusMap[cellValue] || badgeStatusMap[cellValue.toLowerCase()] || 'backlog';
+          // ContentsCell 안의 Status Badge 인스턴스에서 status variant 변경
           try {
-            await figma.loadFontAsync(textNodes[0].fontName);
-            textNodes[0].characters = cellValue;
-          } catch (e) {}
+            var allInstances = cell.findAll(function(n) { return n.type === 'INSTANCE'; });
+            for (var ii = 0; ii < allInstances.length; ii++) {
+              var inst = allInstances[ii];
+              var instProps = inst.componentProperties;
+              for (var pName in instProps) {
+                if (pName.toLowerCase().indexOf('status') >= 0) {
+                  inst.setProperties({ [pName]: badgeStatus });
+                  break;
+                }
+              }
+            }
+          } catch(e) {}
+          // label 텍스트 업데이트
+          var badgeTexts = cell.findAll(function(n) { return n.type === 'TEXT'; });
+          for (var ti = 0; ti < badgeTexts.length; ti++) {
+            try {
+              await figma.loadFontAsync(badgeTexts[ti].fontName);
+              badgeTexts[ti].characters = cellValue;
+            } catch(e) {}
+          }
+        } else {
+          var textNodes = cell.findAll(function(n) { return n.type === 'TEXT'; });
+          if (textNodes.length > 0) {
+            try {
+              await figma.loadFontAsync(textNodes[0].fontName);
+              textNodes[0].characters = cellValue;
+            } catch (e) {}
+          }
         }
       }
     }
@@ -1009,17 +1043,27 @@ async function renderSignal(parent, config) {
 async function renderStatusBadge(parent, config) {
   var statusMap = {
     'backlog': 'backlog', '대기': 'backlog',
-    'in progress': 'inProgress', '처리중': 'inProgress', '진행중': 'inProgress',
+    'in progress': 'in progress', 'inProgress': 'in progress', '처리중': 'in progress', '진행중': 'in progress',
     'done': 'done', '완료': 'done',
     'error': 'error', '실패': 'error', '에러': 'error',
     'pending': 'pending', '보류': 'pending',
   };
   var status = config.status || 'backlog';
   var mapped = statusMap[status] !== undefined ? statusMap[status] : 'backlog';
-  var key = KEYS.StatusBadge[mapped] !== undefined ? KEYS.StatusBadge[mapped] : KEYS.StatusBadge.backlog;
-  var comp = await figma.importComponentByKeyAsync(key);
+  var comp = await figma.importComponentByKeyAsync(KEYS.StatusBadge.backlog);
   var instance = comp.createInstance();
   parent.appendChild(instance);
+
+  // variant 전환
+  try {
+    var props = instance.componentProperties;
+    for (var pName in props) {
+      if (pName.toLowerCase().indexOf('status') >= 0) {
+        instance.setProperties({ [pName]: mapped });
+        break;
+      }
+    }
+  } catch(e) {}
 
   if (config.label) {
     try { instance.setProperties({ 'label#6829:0': config.label }); } catch(e) {}
