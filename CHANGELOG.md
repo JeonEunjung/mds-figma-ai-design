@@ -1,5 +1,12 @@
 # Changelog
 
+## v0.6.1 (2026-04-11)
+
+### StatusBadge variant 버그 수정
+- 테이블 내 StatusBadge의 status variant 전환이 안 되던 문제 수정
+- ContentsCell > Status Badge 중첩 구조에서 자식 인스턴스를 순회하여 property 변경하도록 수정
+- COMPONENT_MAPPING.md, CLAUDE.md 추가 (트러블슈팅 기록 체계화)
+
 ## v0.6.0 (2026-04-11)
 
 ### AI 디자인 품질 가드레일 추가
