@@ -126,12 +126,14 @@ const server = http.createServer((req, res) => {
     let body = '';
     req.on('data', chunk => body += chunk);
     req.on('end', () => {
-      let prompt, imageBase64, designJson;
+      let prompt, imageBase64, designJson, partialJson, jsonPath;
       try {
         const parsed = JSON.parse(body);
         prompt = parsed.prompt;
         imageBase64 = parsed.imageBase64;
         designJson = parsed.designJson;
+        partialJson = parsed.partialJson;
+        jsonPath = parsed.jsonPath;
       } catch (e) {
         res.writeHead(400, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ error: 'Invalid JSON body' }));
@@ -146,7 +148,23 @@ const server = http.createServer((req, res) => {
       }
 
       let fullPrompt;
-      if (designJson) {
+      if (partialJson) {
+        fullPrompt = SYSTEM_PROMPT + `
+
+## 부분 편집 요청
+
+아래는 화면의 특정 컴포넌트 JSON이야 (경로: ${jsonPath}):
+\`\`\`json
+${partialJson}
+\`\`\`
+
+이 컴포넌트 JSON만 수정해서 반환해줘.
+- 전체 화면 JSON이 아니라 이 컴포넌트 부분만 반환
+- type 필드는 그대로 유지
+- 요청한 변경사항만 적용하고 나머지는 그대로
+
+변경 요청: ${prompt}`;
+      } else if (designJson) {
         fullPrompt = SYSTEM_PROMPT + `
 
 ## 편집 요청
@@ -192,14 +210,18 @@ ${designJson}
         // 임시 이미지 파일 삭제
         if (imagePath) { try { fs.unlinkSync(imagePath); } catch(e) {} }
 
+        if (errOutput) console.error('[Claude stderr]', errOutput.substring(0, 500));
+        console.log('[Claude exit code]', code, '[output length]', output.length);
+
         try {
           const match = output.match(/```json\n([\s\S]*?)\n```/) || output.match(/(\{[\s\S]*\})/);
-          if (!match) throw new Error('JSON을 찾을 수 없음. 응답: ' + output.substring(0, 300));
+          if (!match) throw new Error('JSON을 찾을 수 없음. 응답: ' + output.substring(0, 500));
 
           const design = JSON.parse(match[1] || match[0]);
           res.writeHead(200, { 'Content-Type': 'application/json' });
           res.end(JSON.stringify({ design }));
         } catch (err) {
+          console.error('[Parse error]', err.message);
           res.writeHead(500, { 'Content-Type': 'application/json' });
           res.end(JSON.stringify({ error: err.message }));
         }

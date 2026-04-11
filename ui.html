@@ -157,8 +157,11 @@
 // ─── 저장된 키 로드 ─────────────────────────────────────────────────────────
 let refImageBase64 = null;
 let refDesignJson = null;
-let refMode = null; // 'edit' | 'image' | null
+let refMode = null; // 'edit' | 'partial-edit' | 'image' | null
 let refNodeId = null;
+let refPartialJson = null;
+let refJsonPath = null;
+let refSelectedName = null;
 
 window.onload = () => {
   const saved = localStorage.getItem('moin_api_key');
@@ -178,7 +181,15 @@ function setMode(mode, frameName) {
   const editExamples = document.getElementById('editExamplesArea');
   const prompt = document.getElementById('prompt');
 
-  if (mode === 'edit') {
+  if (mode === 'partial-edit') {
+    bar.className = 'mode-bar edit';
+    var partialLabel = frameName || 'component';
+    label.innerHTML = '부분 편집: <strong>' + partialLabel + '</strong>&nbsp;&nbsp;<button class="mode-clear" onclick="clearRef()">✕ 새로 만들기</button>';
+    btn.textContent = '이 부분만 수정';
+    examples.style.display = 'none';
+    editExamples.style.display = '';
+    prompt.placeholder = '선택한 부분을 어떻게 바꿀까요?\n예: 컬럼 추가, row 늘려, 텍스트 변경';
+  } else if (mode === 'edit') {
     bar.className = 'mode-bar edit';
     label.innerHTML = '편집 중: <strong>' + frameName + '</strong>&nbsp;&nbsp;<button class="mode-clear" onclick="clearRef()">✕ 새로 만들기</button>';
     btn.textContent = '수정하기';
@@ -200,6 +211,9 @@ function clearRef() {
   refDesignJson = null;
   refMode = null;
   refNodeId = null;
+  refPartialJson = null;
+  refJsonPath = null;
+  refSelectedName = null;
   setMode('create');
   setStatus('');
 }
@@ -361,7 +375,38 @@ async function generate() {
   document.getElementById('btnGenerate').disabled = true;
   addLog('generate() mode=' + refMode + ' nodeId=' + refNodeId);
 
-  // ── 편집 모드: 클라이언트 패치 먼저 시도 ─────────────────────────────────
+  // ── 부분 편집 모드: 클라이언트 패치 시도 후 서버 fallback ──────────────
+  if (refMode === 'partial-edit' && refPartialJson) {
+    const patched = patchDesign(prompt, refPartialJson);
+    if (patched) {
+      refPartialJson = JSON.stringify(patched);
+      setStatus('Figma에 렌더링 중... (부분 즉시 패치)');
+      parent.postMessage({ pluginMessage: { type: 'RENDER_PARTIAL', design: patched, nodeId: refNodeId, jsonPath: refJsonPath } }, '*');
+      return;
+    }
+    addLog('부분 패치 패턴 미감지 → Claude fallback');
+    setStatus('Claude가 선택 영역 수정 중...');
+    try {
+      const body = { prompt, partialJson: refPartialJson, jsonPath: refJsonPath };
+      const response = await fetch('http://localhost:3333/generate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      if (!response.ok) throw new Error('서버 오류: ' + response.status);
+      const data = await response.json();
+      if (data.error) throw new Error(data.error);
+      refPartialJson = JSON.stringify(data.design);
+      setStatus('Figma에 렌더링 중... (부분 수정)');
+      parent.postMessage({ pluginMessage: { type: 'RENDER_PARTIAL', design: data.design, nodeId: refNodeId, jsonPath: refJsonPath } }, '*');
+    } catch (err) {
+      setStatus('오류: ' + err.message, 'error');
+      document.getElementById('btnGenerate').disabled = false;
+    }
+    return;
+  }
+
+  // ── 전체 편집 모드: 클라이언트 패치 먼저 시도 ─────────────────────────────────
   if (refMode === 'edit' && refDesignJson) {
     const patched = patchDesign(prompt, refDesignJson);
     if (patched) {
@@ -412,14 +457,26 @@ window.addEventListener('message', (event) => {
   if (!msg) return;
   if (msg.type === 'SELECTION') {
     if (!msg.name) {
-      // 선택 해제 — 이미 편집 모드면 유지, 아니면 초기화
-      if (refMode !== 'edit') clearRef();
+      // 선택 해제 — 이미 편집/부분편집 모드면 유지, 아니면 초기화
+      if (refMode !== 'edit' && refMode !== 'partial-edit') clearRef();
       return;
     }
-    if (msg.mode === 'edit') {
+    if (msg.mode === 'partial-edit') {
+      refMode = 'partial-edit';
+      refNodeId = msg.nodeId;
+      refDesignJson = msg.designJson;
+      refPartialJson = msg.partialJson;
+      refJsonPath = msg.jsonPath;
+      refSelectedName = msg.selectedName;
+      setMode('partial-edit', msg.selectedName || 'component');
+      setStatus('');
+    } else if (msg.mode === 'edit') {
       refMode = msg.mode;
       refNodeId = msg.nodeId;
       refDesignJson = msg.designJson;
+      refPartialJson = null;
+      refJsonPath = null;
+      refSelectedName = null;
       setMode('edit', msg.name);
       setStatus('');
     }

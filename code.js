@@ -2,14 +2,56 @@ figma.showUI(__html__, { width: 420, height: 640 });
 
 // ─── 프레임 선택 자동 감지 ────────────────────────────────────────────────────
 figma.on('selectionchange', function() {
-  const sel = figma.currentPage.selection;
-  if (sel.length === 1 && sel[0].type === 'FRAME') {
-    const stored = sel[0].getPluginData('design');
-    if (stored) {
-      figma.ui.postMessage({ type: 'SELECTION', name: sel[0].name, mode: 'edit', designJson: stored, nodeId: sel[0].id });
-    } else {
-      figma.ui.postMessage({ type: 'SELECTION', name: sel[0].name, mode: null, nodeId: sel[0].id });
+  var sel = figma.currentPage.selection;
+  if (sel.length !== 1) {
+    figma.ui.postMessage({ type: 'SELECTION', name: null });
+    return;
+  }
+
+  var node = sel[0];
+
+  // Case 1: 최상위 플러그인 프레임 선택 → 전체 편집 모드
+  if (node.type === 'FRAME' && node.getPluginData('design')) {
+    figma.ui.postMessage({
+      type: 'SELECTION', name: node.name, mode: 'edit',
+      designJson: node.getPluginData('design'), nodeId: node.id
+    });
+    return;
+  }
+
+  // Case 2: 플러그인 프레임 내부 자식 선택 → 부분 편집 모드
+  var rootFrame = findPluginFrame(node);
+  if (rootFrame) {
+    var jsonPath = findNearestJsonPath(node, rootFrame);
+    if (jsonPath) {
+      var design = JSON.parse(rootFrame.getPluginData('design'));
+      var partial = getJsonAtPath(design, jsonPath);
+      if (partial) {
+        figma.ui.postMessage({
+          type: 'SELECTION', name: rootFrame.name, mode: 'partial-edit',
+          designJson: rootFrame.getPluginData('design'),
+          partialJson: JSON.stringify(partial),
+          jsonPath: jsonPath,
+          nodeId: rootFrame.id,
+          selectedName: node.name || partial.type || 'component'
+        });
+        return;
+      }
     }
+    // jsonPath 없는 내부 노드 → 전체 편집 모드로 fallback
+    var stored = rootFrame.getPluginData('design');
+    if (stored) {
+      figma.ui.postMessage({
+        type: 'SELECTION', name: rootFrame.name, mode: 'edit',
+        designJson: stored, nodeId: rootFrame.id
+      });
+      return;
+    }
+  }
+
+  // Case 3: 플러그인과 무관한 프레임
+  if (node.type === 'FRAME') {
+    figma.ui.postMessage({ type: 'SELECTION', name: node.name, mode: null, nodeId: node.id });
   } else {
     figma.ui.postMessage({ type: 'SELECTION', name: null });
   }
@@ -181,6 +223,87 @@ function resolveWidth(width) {
   return closest;
 }
 
+// ─── JSON 경로 헬퍼 ─────────────────────────────────────────────────────────
+function getJsonAtPath(obj, path) {
+  var parts = path.split('.');
+  var current = obj;
+  for (var i = 0; i < parts.length; i++) {
+    if (current === undefined || current === null) return undefined;
+    current = current[parts[i]];
+  }
+  return current;
+}
+
+function setJsonAtPath(obj, path, value) {
+  var parts = path.split('.');
+  var current = obj;
+  for (var i = 0; i < parts.length - 1; i++) {
+    current = current[parts[i]];
+  }
+  current[parts[parts.length - 1]] = value;
+}
+
+function findPluginFrame(node) {
+  var current = node;
+  while (current) {
+    if (current.type === 'FRAME' && current.getPluginData && current.getPluginData('design')) {
+      return current;
+    }
+    current = current.parent;
+  }
+  return null;
+}
+
+function findNearestJsonPath(node, rootFrame) {
+  var current = node;
+  while (current && current !== rootFrame) {
+    if (current.getPluginData && current.getPluginData('jsonPath')) {
+      return current.getPluginData('jsonPath');
+    }
+    current = current.parent;
+  }
+  return null;
+}
+
+function findNodeByJsonPath(frame, path) {
+  return frame.findOne(function(n) {
+    return n.getPluginData && n.getPluginData('jsonPath') === path;
+  });
+}
+
+// 단일 컴포넌트 렌더 디스패치
+async function renderSingleChild(parent, config, jsonPath) {
+  var prevCount = parent.children.length;
+  if      (config.type === 'top')        await renderTop(parent, config);
+  else if (config.type === 'table')      await renderTable(parent, config);
+  else if (config.type === 'card')       await renderCard(parent, config, jsonPath);
+  else if (config.type === 'searchbar')  await renderSearchBar(parent, config);
+  else if (config.type === 'filterbar')  await renderFilterBar(parent, config);
+  else if (config.type === 'tab')        await renderTab(parent, config);
+  else if (config.type === 'chipgroup')  await renderChipGroup(parent, config);
+  else if (config.type === 'spinner')    await renderSpinner(parent, config);
+  else if (config.type === 'breadcrumb') await renderBreadcrumb(parent, config);
+  else if (config.type === 'textfield')  await renderTextField(parent, config);
+  else if (config.type === 'textarea')   await renderTextArea(parent, config);
+  else if (config.type === 'checkbox')   await renderCheckbox(parent, config);
+  else if (config.type === 'radio')      await renderRadioButton(parent, config);
+  else if (config.type === 'switch')     await renderSwitch(parent, config);
+  else if (config.type === 'formgroup')  await renderFormGroup(parent, config);
+  else if (config.type === 'iconbutton') await renderIconButton(parent, config);
+  else if (config.type === 'textbutton') await renderTextButton(parent, config);
+  else if (config.type === 'pagination') await renderPagination(parent, config);
+  else if (config.type === 'tooltip')    await renderTooltip(parent, config);
+  else if (config.type === 'accordion')   await renderAccordion(parent, config);
+  else if (config.type === 'statusbadge') await renderStatusBadge(parent, config);
+  else if (config.type === 'signal')      await renderSignal(parent, config);
+  else if (config.type === 'custom')      await renderCustom(parent, config);
+  // 태깅
+  if (parent.children.length > prevCount) {
+    var newNode = parent.children[parent.children.length - 1];
+    newNode.setPluginData('jsonPath', jsonPath);
+  }
+}
+
 // ─── 메시지 수신 ──────────────────────────────────────────────────────────────
 figma.ui.onmessage = async (msg) => {
   if (msg.type === 'RENDER') {
@@ -207,6 +330,59 @@ figma.ui.onmessage = async (msg) => {
       }
       await renderDesign(msg.design, frame);
       figma.ui.postMessage({ type: 'DONE' });
+    } catch (err) {
+      figma.ui.postMessage({ type: 'ERROR', error: err.message });
+    }
+  }
+
+  // ─── 부분 편집 ──────────────────────────────────────────────────────────────
+  if (msg.type === 'RENDER_PARTIAL') {
+    figma.ui.postMessage({ type: 'LOG', msg: 'RENDER_PARTIAL 수신, path=' + msg.jsonPath });
+    var frame = msg.nodeId ? figma.getNodeById(msg.nodeId) : null;
+    if (!frame || frame.type !== 'FRAME') {
+      figma.ui.postMessage({ type: 'ERROR', error: '편집할 프레임을 찾을 수 없습니다' });
+      return;
+    }
+    try {
+      var jsonPath = msg.jsonPath;
+      var partialDesign = msg.design;
+
+      // 저장된 전체 JSON 업데이트
+      var fullDesign = JSON.parse(frame.getPluginData('design'));
+      setJsonAtPath(fullDesign, jsonPath, partialDesign);
+      frame.setPluginData('design', JSON.stringify(fullDesign));
+
+      // jsonPath로 교체 대상 노드 찾기
+      var targetNode = findNodeByJsonPath(frame, jsonPath);
+      if (targetNode) {
+        var parentNode = targetNode.parent;
+        var childIndex = -1;
+        for (var ci = 0; ci < parentNode.children.length; ci++) {
+          if (parentNode.children[ci] === targetNode) { childIndex = ci; break; }
+        }
+        targetNode.remove();
+
+        // 해당 컴포넌트만 다시 렌더
+        await renderSingleChild(parentNode, partialDesign, jsonPath);
+
+        // 올바른 위치로 이동 + 새 노드 자동 선택 (partial-edit 모드 유지)
+        var newNode = parentNode.children[parentNode.children.length - 1];
+        if (childIndex >= 0 && parentNode.children.length > 0) {
+          if (childIndex < parentNode.children.length - 1) {
+            parentNode.insertChild(childIndex, newNode);
+          }
+        }
+        if (newNode) figma.currentPage.selection = [newNode];
+        figma.ui.postMessage({ type: 'DONE', info: 'partial: ' + jsonPath });
+      } else {
+        // fallback: 전체 재렌더
+        figma.ui.postMessage({ type: 'LOG', msg: '부분 노드 못 찾음, 전체 재렌더' });
+        for (var fi = frame.children.length - 1; fi >= 0; fi--) {
+          frame.children[fi].remove();
+        }
+        await renderDesign(fullDesign, frame);
+        figma.ui.postMessage({ type: 'DONE', info: 'full re-render fallback' });
+      }
     } catch (err) {
       figma.ui.postMessage({ type: 'ERROR', error: err.message });
     }
@@ -242,12 +418,16 @@ async function renderDesign(design, existingFrame) {
   const skipped = [];
 
   let lnbWidth = 240;
-  for (const section of design.sections || []) {
+  var sections = design.sections || [];
+  for (var si = 0; si < sections.length; si++) {
+    var section = sections[si];
+    var sectionPath = 'sections.' + si;
+    var prevCount = frame.children.length;
     if (section.type === 'lnb') {
       const lnbNode = await renderLNB(frame, section, H, lnbWidth);
       if (lnbNode) lnbWidth = lnbNode.width;
     } else if (section.type === 'main') {
-      await renderMain(frame, section, W - lnbWidth, H, lnbWidth);
+      await renderMain(frame, section, W - lnbWidth, H, lnbWidth, sectionPath);
     } else if (section.type === 'dialog') {
       await renderDialog(frame, section, W, H);
     } else if (section.type === 'toast') {
@@ -259,6 +439,10 @@ async function renderDesign(design, existingFrame) {
       }
     } else {
       skipped.push(section.type);
+    }
+    // section 노드에 jsonPath 태깅
+    if (frame.children.length > prevCount) {
+      frame.children[frame.children.length - 1].setPluginData('jsonPath', sectionPath);
     }
   }
 
@@ -330,7 +514,7 @@ async function renderLNB(parent, section, H, W) {
 }
 
 // ─── Main 영역 ────────────────────────────────────────────────────────────────
-async function renderMain(parent, section, W, H, offsetX) {
+async function renderMain(parent, section, W, H, offsetX, sectionPath) {
   const pad = section.padding !== undefined ? section.padding : 16;
   const gap = section.gap !== undefined ? section.gap : 16;
   const main = figma.createFrame();
@@ -347,10 +531,14 @@ async function renderMain(parent, section, W, H, offsetX) {
   main.fills = [];
   parent.appendChild(main);
 
-  for (const child of section.children || []) {
+  var children = section.children || [];
+  for (var mi = 0; mi < children.length; mi++) {
+    var child = children[mi];
+    var childPath = (sectionPath || 'sections.1') + '.children.' + mi;
+    var prevCount = main.children.length;
     if      (child.type === 'top')        await renderTop(main, child);
     else if (child.type === 'table')      await renderTable(main, child);
-    else if (child.type === 'card')       await renderCard(main, child);
+    else if (child.type === 'card')       await renderCard(main, child, childPath);
     else if (child.type === 'searchbar')  await renderSearchBar(main, child);
     else if (child.type === 'filterbar')  await renderFilterBar(main, child);
     else if (child.type === 'tab')        await renderTab(main, child);
@@ -372,6 +560,10 @@ async function renderMain(parent, section, W, H, offsetX) {
     else if (child.type === 'signal')      await renderSignal(main, child);
     else if (child.type === 'custom')      await renderCustom(main, child);
     else figma.ui.postMessage({ type: 'WARN', msg: '미지원 컴포넌트: ' + child.type });
+    // children 태깅
+    if (main.children.length > prevCount) {
+      main.children[main.children.length - 1].setPluginData('jsonPath', childPath);
+    }
   }
 }
 
@@ -615,7 +807,7 @@ async function renderTable(parent, config) {
 }
 
 // ─── Card (섹션 wrapper) ──────────────────────────────────────────────────────
-async function renderCard(parent, config) {
+async function renderCard(parent, config, cardPath) {
   const card = figma.createFrame();
   card.name = config.title || 'Card';
   card.layoutMode = 'VERTICAL';
@@ -630,7 +822,11 @@ async function renderCard(parent, config) {
   card.layoutSizingHorizontal = 'FILL';
   card.layoutSizingVertical = 'HUG';
 
-  for (const child of config.children || []) {
+  var children = config.children || [];
+  for (var ci = 0; ci < children.length; ci++) {
+    var child = children[ci];
+    var childPath = (cardPath || '') + '.children.' + ci;
+    var prevCount = card.children.length;
     if (child.type === 'top')        await renderTop(card, child);
     if (child.type === 'table')      await renderTable(card, child);
     if (child.type === 'searchbar')  await renderSearchBar(card, child);
@@ -652,6 +848,10 @@ async function renderCard(parent, config) {
     if (child.type === 'statusbadge') await renderStatusBadge(card, child);
     if (child.type === 'signal')      await renderSignal(card, child);
     if (child.type === 'custom')      await renderCustom(card, child);
+    // card children 태깅
+    if (cardPath && card.children.length > prevCount) {
+      card.children[card.children.length - 1].setPluginData('jsonPath', childPath);
+    }
   }
   return card;
 }
