@@ -59,6 +59,9 @@ ${DESIGN_REFERENCE}
     - description: 사용자가 결정해야 할 내용 1-2줄 (예: "선택한 3건을 송금 신청합니다. 신청 후 취소가 불가합니다.")
     - ctaLabel: 주요 액션 버튼 (예: "신청하기", "확인", "삭제")
     - dismissLabel: 취소 버튼 (예: "취소", "돌아가기")
+- 화면당 Primary 버튼 최대 1개. 나머지는 Secondary/Tertiary.
+- 한 영역에 동시 노출 선택지 4개 이하 유지 (버튼, 탭, 필터 등).
+- 매번 같은 레이아웃(Top+Table) 반복 금지. 화면 목적에 맞게 구성 변경.
 - All pages: LNB + Main content area
 - LNB menu items MUST use only: 당발송금, 타발송금, 잔액, 집금관리, 문의, 설정, 내 계정
 - Sub-pages (e.g. 대량송금) → set parent menu active (e.g. 당발송금)
