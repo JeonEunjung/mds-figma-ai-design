@@ -4,8 +4,20 @@ const fs = require('fs');
 const path = require('path');
 const os = require('os');
 
+const { execSync } = require('child_process');
+
 const PORT = 3333;
 const PLUGIN_REF = path.join(__dirname, 'plugin_reference');
+
+// 서버 시작 시 자동 업데이트
+try {
+  const result = execSync('git pull', { cwd: __dirname, timeout: 10000 }).toString().trim();
+  if (result !== 'Already up to date.') {
+    console.log('[Auto-update]', result);
+  }
+} catch (e) {
+  console.warn('[Auto-update] git pull 실패 — 기존 버전으로 실행합니다:', e.message);
+}
 
 function loadRef(basePath) {
   const sections = [
