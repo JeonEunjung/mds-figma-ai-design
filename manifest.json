@@ -1,7 +1,6 @@
 {
   "name": "MOIN AI Design",
   "id": "moin-ai-design",
-  "version": "0.6.0",
   "api": "1.0.0",
   "main": "code.js",
   "ui": "ui.html",
