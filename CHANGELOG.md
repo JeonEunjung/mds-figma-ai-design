@@ -1,5 +1,13 @@
 # Changelog
 
+## v0.7.0 (2026-04-13)
+
+### DS Variable & Text Style 바인딩
+- **Color Variable 바인딩**: 렌더링 시 Color System Token Variable을 노드에 자동 바인딩 (Surface, Contents, Border 등)
+- **Text Style 바인딩**: custom 텍스트 렌더링 시 DS Text Style (`m14/l3`, `b24/l2` 등) 자동 적용
+- manifest.json에 `teamlibrary` 권한 추가
+- 페이지 배경색 Surface/Secondary로 변경
+
 ## v0.6.4 (2026-04-13)
 
 ### 디자인 토큰 적용

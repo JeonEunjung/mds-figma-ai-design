@@ -1,5 +1,163 @@
 figma.showUI(__html__, { width: 420, height: 640 });
 
+// ─── DS Variable 바인딩 ──────────────────────────────────────────────────────
+var DS_VAR_KEYS = {
+  'Surface/Primary':   '3c34e5a4484f85d65371830850f59a0870197835',
+  'Surface/Secondary': '5f8522491df8b3a8dfdf6de93f44bb9b923df3bd',
+  'Surface/Tertiary':  '94c2bd86d07dcab611f900f57de591b0678be487',
+  'Surface/Blue':      'dccd14c2e04a5d2f242bd3f5f31ba775fb32d923',
+  'Surface/Red':       'ddb74ae7230e930fcc60943c3405045af1df8bae',
+  'Surface/Green':     'c71d7d16194865e8654e3af7ffaddbbef1219314',
+  'Surface/Yellow':    '27b825cd424770cd8ed09cad8649782db575265a',
+  'Contents/Primary':  'a72bd691ffa1de36ce6b259495ed18410140bb3a',
+  'Contents/Secondary':'572776f6e58e76231d491cf0457c08eee1d3d1e6',
+  'Contents/Tertiary': 'beac4f35fba3bc1178ceb1a16df48afff4346059',
+  'Contents/Blue':     'ce5a398b7413b6c3091852fc04907faba44bcf3f',
+  'Contents/Red':      '765184bef6c46173097e9449de1f10ab3e558050',
+  'Contents/White':    'f15859311f20bd172844925d7312bd3a604135ae',
+  'Contents/Green':    '4cd8da9e1abd021f837b153ad07cbc73b9788c7e',
+  'Contents/Yellow':   '81794d2ba4e674feb3a2567b3a0a135342df8723',
+  'Border/Primary':    '4d09bc256155ca035af4037da86e1ac1fbb43073',
+  'Border/Secondary':  '63f86ad5b0840e1801fcae16d2d780dfb32b03b4',
+  'Border/Tertiary':   '94417af868a1aecae655e5af6aee5320bf7421c6',
+  'Overlay/Primary':   '90f7a32c4d73c0e03f328e8a9cb519cd6e89c47d',
+  'Focus/Focus':       '90cf596e4b02e39fc8c925ebf228bd6fa0a30390',
+};
+
+// TOKENS → DS Variable 매핑
+var TOKEN_TO_VAR = {
+  white:            'Surface/Primary',
+  gray50:           'Surface/Secondary',
+  gray100:          'Surface/Tertiary',
+  contentPrimary:   'Contents/Primary',
+  contentSecondary: 'Contents/Secondary',
+  contentDisabled:  'Contents/Tertiary',
+  contentBlue:      'Contents/Blue',
+  contentRed:       'Contents/Red',
+  contentWhite:     'Contents/White',
+  borderDefault:    'Border/Primary',
+  borderSub:        'Border/Secondary',
+  borderAccent:     'Focus/Focus',
+  black:            'Overlay/Primary',
+};
+
+// Variable import 캐시
+var _varCache = {};
+async function importDsVar(tokenName) {
+  var varName = TOKEN_TO_VAR[tokenName];
+  if (!varName) return null;
+  var key = DS_VAR_KEYS[varName];
+  if (!key) return null;
+  if (_varCache[key]) return _varCache[key];
+  try {
+    var v = await figma.variables.importVariableByKeyAsync(key);
+    _varCache[key] = v;
+    return v;
+  } catch(e) {
+    return null;
+  }
+}
+
+async function bindFill(node, tokenName) {
+  var v = await importDsVar(tokenName);
+  if (v && node.fills && node.fills.length > 0) {
+    var paint = JSON.parse(JSON.stringify(node.fills[0]));
+    paint.boundVariables = { color: { type: 'VARIABLE_ALIAS', id: v.id } };
+    node.fills = [paint];
+  }
+}
+
+async function bindStroke(node, tokenName) {
+  var v = await importDsVar(tokenName);
+  if (v && node.strokes && node.strokes.length > 0) {
+    var paint = JSON.parse(JSON.stringify(node.strokes[0]));
+    paint.boundVariables = { color: { type: 'VARIABLE_ALIAS', id: v.id } };
+    node.strokes = [paint];
+  }
+}
+
+// hex → token name 역매핑 (custom 렌더에서 사용)
+var HEX_TO_TOKEN = {
+  '#ffffff': 'white', '#f9fafb': 'gray50', '#f3f5f8': 'gray100',
+  '#e6e9eb': 'borderDefault', '#c9cdd2': 'borderSub',
+  '#1a1b22': 'contentPrimary', '#6b6c74': 'contentSecondary',
+  '#85878a': 'contentDisabled', '#0066ff': 'contentBlue',
+  '#e53935': 'contentRed', '#000000': 'black',
+};
+
+async function bindFillByHex(node, hex, field) {
+  if (!hex) return;
+  var tokenName = HEX_TO_TOKEN[hex.toLowerCase()];
+  if (!tokenName) return;
+  if (field === 'strokes') {
+    await bindStroke(node, tokenName);
+  } else {
+    await bindFill(node, tokenName);
+  }
+}
+
+// ─── DS Text Style 바인딩 ────────────────────────────────────────────────────
+// 네이밍: {b|m}{size}/l{1|2|3} — b=Bold, m=Medium, l3=body용 lineHeight
+var TEXT_STYLE_KEYS = {
+  'm12/l3': '690cc29cd9f144bbc2be6958fd6b6daf5f1753d2',
+  'm14/l3': '609eac1be0f8dd6501a0db4a14651976027769f0',
+  'm16/l3': '766f0db19abcb9e1dbd07e8cb98510f1ef99b731',
+  'm18/l3': '8a0a8704dbeae687a02b3acd70c484380860e1b7',
+  'm20/l3': '98dbd1ca03fe0c953ca8bc2a291303b5b3d5ba1a',
+  'm24/l3': '399c7a47e6eadf2d3a8a739fa6f885ad71a2ec06',
+  'm28/l3': '5be9eb16f65e5bb18aa3b6b1c6d86593ebda96a2',
+  'm32/l3': 'e27961eaf0926ab6bb8be37356fd20c079937b45',
+  'b12/l3': 'ead9b72c314fe6a4b278bf0bd0fbb84bffb713aa',
+  'b14/l3': '8793291b74422c4acf6153c9f2c34457b93c8a7b',
+  'b16/l3': '0f1ee0d7f341efae86b50878563e790c88c34285',
+  'b18/l3': '7d9ff11b1c8d0cd10a0307f7a7dff83e83c44db1',
+  'b20/l3': 'f7472d28144755e531cbea8829f23006082b61cd',
+  'b24/l3': '880e3ac9c236da1e58135af5dba47d06929bff3d',
+  'b28/l3': 'aad17f4614650978ea55afd1dc2c7c774865a74b',
+  'b32/l3': 'b6240aebf443045eb77f9edd29f0a38e63ce85a3',
+  'm12/l2': 'cd8774807d11bdc5a0329d0cbc24a6339478e04f',
+  'm14/l2': '7d354105ec1e0a8af50d3e646211f951d9be5084',
+  'm16/l2': 'b86dda2a1aa8c779f768e36c8b84af4ad41e44c0',
+  'm18/l2': 'd1423b8b0c013f5e19886e6b03b84e91c7aae9d8',
+  'm20/l2': '32f296718720a8297da88076167ee072d89c3ab6',
+  'm24/l2': 'cebe238dc10477370fb377647a570e3e8e9fa289',
+  'm28/l2': '47072c0b22f864c97375a5ba962f71e263f4815f',
+  'm32/l2': 'eece814e06463d19c31da96ce21f03a4ae623972',
+  'b12/l2': '5bffd03b6693e976847059793fcd0c2c51f990b4',
+  'b14/l2': 'b99104c02b01399b26a2de6df4cd1684b157913a',
+  'b16/l2': 'a925bd11238b26975ea3a10c189a78e631c98b9b',
+  'b18/l2': '1cfc08ab7e4e06460fa1bd1eb90ee4719d872b94',
+  'b20/l2': 'e785203145618ec88a4b9360b643d85b847d4ea6',
+  'b24/l2': 'c588b8ee251a94f5c193eb801ed08803a8d89b5c',
+  'b28/l2': 'cad1def68d34c164a947a9505858c5adabf858dd',
+  'b32/l2': '0be0f078f63845cacc5af99500929c9becd7afe3',
+};
+
+var _styleCache = {};
+async function importTextStyle(styleName) {
+  var key = TEXT_STYLE_KEYS[styleName];
+  if (!key) return null;
+  if (_styleCache[key]) return _styleCache[key];
+  try {
+    var style = await figma.importStyleByKeyAsync(key);
+    _styleCache[key] = style;
+    return style;
+  } catch(e) {
+    return null;
+  }
+}
+
+async function bindTextStyle(textNode, fontSize, weight) {
+  var prefix = weight >= 700 ? 'b' : 'm';
+  // l3 = body용 (기본), l2 = heading용
+  var lh = fontSize >= 20 ? 'l2' : 'l3';
+  var styleName = prefix + fontSize + '/' + lh;
+  var style = await importTextStyle(styleName);
+  if (style) {
+    textNode.textStyleId = style.id;
+  }
+}
+
 // ─── 프레임 선택 자동 감지 ────────────────────────────────────────────────────
 figma.on('selectionchange', function() {
   var sel = figma.currentPage.selection;
@@ -457,7 +615,8 @@ async function renderDesign(design, existingFrame) {
     frame.name = design.pageName || '화면';
     frame.resize(W, H);
     frame.layoutMode = 'NONE';
-    frame.fills = [{ type: 'SOLID', color: TOKENS.gray100 }];
+    frame.fills = [{ type: 'SOLID', color: TOKENS.gray50 }];
+    await bindFill(frame, 'gray50');
     frame.clipsContent = true;
     page.appendChild(frame);
   }
@@ -734,6 +893,8 @@ async function renderTable(parent, config) {
   tableFrame.itemSpacing = 0;
   tableFrame.fills = [{ type: 'SOLID', color: TOKENS.white }];
   tableFrame.strokes = [{ type: 'SOLID', color: TOKENS.borderDefault }];
+  await bindFill(tableFrame, 'white');
+  await bindStroke(tableFrame, 'borderDefault');
   tableFrame.strokeWeight = 1;
   tableFrame.cornerRadius = 8;
   tableFrame.clipsContent = true;
@@ -747,6 +908,7 @@ async function renderTable(parent, config) {
   headerRow.layoutMode = 'HORIZONTAL';
   headerRow.itemSpacing = 0;
   headerRow.fills = [{ type: 'SOLID', color: TOKENS.gray50 }];
+  await bindFill(headerRow, 'gray50');
   tableFrame.appendChild(headerRow);
   headerRow.layoutSizingHorizontal = 'FILL';
   headerRow.layoutSizingVertical = 'HUG';
@@ -781,6 +943,7 @@ async function renderTable(parent, config) {
     dataRow.layoutMode = 'HORIZONTAL';
     dataRow.itemSpacing = 0;
     dataRow.fills = [{ type: 'SOLID', color: TOKENS.white }];
+    await bindFill(dataRow, 'white');
     tableFrame.appendChild(dataRow);
     dataRow.layoutSizingHorizontal = 'FILL';
     dataRow.layoutSizingVertical = 'HUG';
@@ -871,6 +1034,7 @@ async function renderCard(parent, config, cardPath) {
   card.paddingRight = 16;
   card.cornerRadius = 12;
   card.fills = [{ type: 'SOLID', color: TOKENS.white }];
+  await bindFill(card, 'white');
   parent.appendChild(card);
   card.layoutSizingHorizontal = 'FILL';
   card.layoutSizingVertical = 'HUG';
@@ -1079,8 +1243,11 @@ async function renderCustom(parent, config) {
     text.fontSize = fontSize;
     text.lineHeight = { value: config.lineHeight || getLineHeight(fontSize), unit: 'PERCENT' };
     text.characters = String(config.value || '');
+    // DS Text Style 바인딩 (바인딩 시 font/size/lineHeight 자동 적용)
+    await bindTextStyle(text, fontSize, weight);
     if (config.color) {
       text.fills = [{ type: 'SOLID', color: hexToRgb(config.color) }];
+      await bindFillByHex(text, config.color, 'fills');
     }
     parent.appendChild(text);
     if (config.fill) {
@@ -1117,6 +1284,7 @@ async function renderCustom(parent, config) {
   // 배경색
   if (config.bg) {
     frame.fills = [{ type: 'SOLID', color: hexToRgb(config.bg) }];
+    await bindFillByHex(frame, config.bg, 'fills');
   } else {
     frame.fills = [];
   }
@@ -1124,6 +1292,7 @@ async function renderCustom(parent, config) {
   // 테두리
   if (config.border) {
     frame.strokes = [{ type: 'SOLID', color: hexToRgb(config.border) }];
+    await bindFillByHex(frame, config.border, 'strokes');
     frame.strokeWeight = config.borderWidth || 1;
   }
 
@@ -1201,7 +1370,9 @@ async function renderControlWithLabel(parent, key, label, spacing) {
   text.fontName = { family: 'Pretendard', style: 'Medium' };
   text.fontSize = 14;
   text.characters = label;
+  await bindTextStyle(text, 14, 500);
   text.fills = [{ type: 'SOLID', color: TOKENS.contentPrimary }];
+  await bindFill(text, 'contentPrimary');
   row.appendChild(text);
 
   return row;
