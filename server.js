@@ -74,6 +74,12 @@ ${DESIGN_REFERENCE}
 - 화면당 Primary 버튼 최대 1개. 나머지는 Secondary/Tertiary.
 - 한 영역에 동시 노출 선택지 4개 이하 유지 (버튼, 탭, 필터 등).
 - 매번 같은 레이아웃(Top+Table) 반복 금지. 화면 목적에 맞게 구성 변경.
+## Custom 요소 토큰 규칙
+custom type으로 텍스트/프레임을 직접 만들 때, 반드시 Foundation 토큰 값만 사용할 것:
+- 색상: Colors.md에 정의된 hex 값만 사용 (임의 색상 금지)
+- 타이포: Typography.md의 size/weight/lineHeight 조합만 사용
+- 간격: Typography.md의 간격 토큰 (4, 8, 16, 24) 만 사용
+
 - All pages: LNB + Main content area
 - LNB menu items MUST use only: 당발송금, 타발송금, 잔액, 집금관리, 문의, 설정, 내 계정
 - Sub-pages (e.g. 대량송금) → set parent menu active (e.g. 당발송금)

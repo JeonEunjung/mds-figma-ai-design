@@ -389,6 +389,28 @@ figma.ui.onmessage = async (msg) => {
   }
 };
 
+// ─── Design Tokens ───────────────────────────────────────────────────────────
+var TOKENS = {
+  // Surface
+  white:       { r: 1, g: 1, b: 1 },             // #FFFFFF
+  gray50:      { r: 0.976, g: 0.980, b: 0.973 },  // #F9FAFB
+  gray100:     { r: 0.953, g: 0.961, b: 0.973 },  // #F3F5F8
+  gray200:     { r: 0.902, g: 0.914, b: 0.922 },  // #E6E9EB
+  // Contents
+  contentPrimary:   { r: 0.102, g: 0.106, b: 0.133 },  // #1A1B22
+  contentSecondary: { r: 0.420, g: 0.424, b: 0.455 },  // #6B6C74
+  contentDisabled:  { r: 0.522, g: 0.529, b: 0.541 },  // #85878A
+  contentBlue:      { r: 0, g: 0.4, b: 1 },             // #0066FF
+  contentRed:       { r: 0.898, g: 0.224, b: 0.208 },   // #E53935
+  contentWhite:     { r: 1, g: 1, b: 1 },               // #FFFFFF
+  // Border
+  borderDefault:  { r: 0.902, g: 0.914, b: 0.922 },  // #E6E9EB
+  borderSub:      { r: 0.788, g: 0.804, b: 0.824 },  // #C9CDD2
+  borderAccent:   { r: 0, g: 0.4, b: 1 },             // #0066FF
+  // Overlay
+  black:       { r: 0, g: 0, b: 0 },             // #000000
+};
+
 // ─── 렌더 엔진 ────────────────────────────────────────────────────────────────
 async function renderDesign(design, existingFrame) {
   const page = figma.currentPage;
@@ -404,7 +426,7 @@ async function renderDesign(design, existingFrame) {
     frame.name = design.pageName || '화면';
     frame.resize(W, H);
     frame.layoutMode = 'NONE';
-    frame.fills = [{ type: 'SOLID', color: { r: 0.961, g: 0.961, b: 0.969 } }];
+    frame.fills = [{ type: 'SOLID', color: TOKENS.gray100 }];
     frame.clipsContent = true;
     page.appendChild(frame);
   }
@@ -679,8 +701,8 @@ async function renderTable(parent, config) {
   tableFrame.name = 'Table';
   tableFrame.layoutMode = 'VERTICAL';
   tableFrame.itemSpacing = 0;
-  tableFrame.fills = [{ type: 'SOLID', color: { r: 1, g: 1, b: 1 } }];
-  tableFrame.strokes = [{ type: 'SOLID', color: { r: 0.902, g: 0.914, b: 0.922 } }];
+  tableFrame.fills = [{ type: 'SOLID', color: TOKENS.white }];
+  tableFrame.strokes = [{ type: 'SOLID', color: TOKENS.borderDefault }];
   tableFrame.strokeWeight = 1;
   tableFrame.cornerRadius = 8;
   tableFrame.clipsContent = true;
@@ -693,7 +715,7 @@ async function renderTable(parent, config) {
   headerRow.name = 'Header Row';
   headerRow.layoutMode = 'HORIZONTAL';
   headerRow.itemSpacing = 0;
-  headerRow.fills = [{ type: 'SOLID', color: { r: 0.976, g: 0.980, b: 0.984 } }];
+  headerRow.fills = [{ type: 'SOLID', color: TOKENS.gray50 }];
   tableFrame.appendChild(headerRow);
   headerRow.layoutSizingHorizontal = 'FILL';
   headerRow.layoutSizingVertical = 'HUG';
@@ -727,7 +749,7 @@ async function renderTable(parent, config) {
     dataRow.name = 'Row ' + (r + 1);
     dataRow.layoutMode = 'HORIZONTAL';
     dataRow.itemSpacing = 0;
-    dataRow.fills = [{ type: 'SOLID', color: { r: 1, g: 1, b: 1 } }];
+    dataRow.fills = [{ type: 'SOLID', color: TOKENS.white }];
     tableFrame.appendChild(dataRow);
     dataRow.layoutSizingHorizontal = 'FILL';
     dataRow.layoutSizingVertical = 'HUG';
@@ -817,7 +839,7 @@ async function renderCard(parent, config, cardPath) {
   card.paddingLeft = 16;
   card.paddingRight = 16;
   card.cornerRadius = 12;
-  card.fills = [{ type: 'SOLID', color: { r: 1, g: 1, b: 1 } }];
+  card.fills = [{ type: 'SOLID', color: TOKENS.white }];
   parent.appendChild(card);
   card.layoutSizingHorizontal = 'FILL';
   card.layoutSizingVertical = 'HUG';
@@ -975,7 +997,7 @@ async function renderModal(parent, config, W, H) {
   overlay.resize(W, H);
   overlay.x = 0;
   overlay.y = 0;
-  overlay.fills = [{ type: 'SOLID', color: { r: 0, g: 0, b: 0 }, opacity: 0.5 }];
+  overlay.fills = [{ type: 'SOLID', color: TOKENS.black, opacity: 0.5 }];
   overlay.layoutMode = 'NONE';
   parent.appendChild(overlay);
 
@@ -1149,7 +1171,7 @@ async function renderControlWithLabel(parent, key, label, spacing) {
   text.fontName = { family: 'Pretendard', style: 'Medium' };
   text.fontSize = 14;
   text.characters = label;
-  text.fills = [{ type: 'SOLID', color: { r: 0.102, g: 0.106, b: 0.133 } }];
+  text.fills = [{ type: 'SOLID', color: TOKENS.contentPrimary }];
   row.appendChild(text);
 
   return row;
@@ -1303,7 +1325,7 @@ async function renderDialog(parent, config, W, H) {
   overlay.resize(W, H);
   overlay.x = 0;
   overlay.y = 0;
-  overlay.fills = [{ type: 'SOLID', color: { r: 0, g: 0, b: 0 }, opacity: 0.5 }];
+  overlay.fills = [{ type: 'SOLID', color: TOKENS.black, opacity: 0.5 }];
   overlay.layoutMode = 'NONE';
   parent.appendChild(overlay);
 
