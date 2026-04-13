@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.6.3 (2026-04-13)
+
+### 버그 수정 및 개선
+- manifest.json에서 `version` 필드 제거 — Figma 플러그인 로드 시 "unexpected extra property" 에러 수정
+- 서버 시작 시 자동 `git pull` 추가 — 항상 최신 버전으로 실행 (실패 시 기존 버전으로 정상 시작)
+
 ## v0.6.2 (2026-04-11)
 
 ### 부분 편집 기능 추가
