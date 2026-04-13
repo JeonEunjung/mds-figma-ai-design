@@ -411,6 +411,37 @@ var TOKENS = {
   black:       { r: 0, g: 0, b: 0 },             // #000000
 };
 
+// Typography tokens: { size, weight, lineHeight(%) }
+var TYPO = {
+  label:    { size: 12, weight: 500, lineHeight: 150 },
+  body:     { size: 14, weight: 500, lineHeight: 143 },
+  bodyM:    { size: 16, weight: 500, lineHeight: 150 },
+  bodyL:    { size: 18, weight: 500, lineHeight: 144 },
+  subtitle: { size: 20, weight: 700, lineHeight: 130 },
+  section:  { size: 24, weight: 700, lineHeight: 133 },
+  page:     { size: 28, weight: 700, lineHeight: 129 },
+  display:  { size: 32, weight: 700, lineHeight: 125 },
+};
+
+var VALID_FONT_SIZES = [12, 14, 16, 18, 20, 24, 28, 32];
+
+function snapToTypo(size) {
+  var closest = VALID_FONT_SIZES[0];
+  for (var i = 1; i < VALID_FONT_SIZES.length; i++) {
+    if (Math.abs(VALID_FONT_SIZES[i] - size) < Math.abs(closest - size)) {
+      closest = VALID_FONT_SIZES[i];
+    }
+  }
+  return closest;
+}
+
+function getLineHeight(size) {
+  for (var key in TYPO) {
+    if (TYPO[key].size === size) return TYPO[key].lineHeight;
+  }
+  return 143; // default body
+}
+
 // ─── 렌더 엔진 ────────────────────────────────────────────────────────────────
 async function renderDesign(design, existingFrame) {
   const page = figma.currentPage;
@@ -1040,17 +1071,16 @@ async function renderCustom(parent, config) {
   // type === 'text' → 텍스트 노드
   if (config.type === 'text') {
     var text = figma.createText();
-    var weight = config.weight || 500;
+    var fontSize = snapToTypo(config.size || 14);
+    var weight = config.weight || (fontSize >= 20 ? 700 : 500);
     var style = weight >= 700 ? 'Bold' : 'Medium';
     await figma.loadFontAsync({ family: 'Pretendard', style: style });
     text.fontName = { family: 'Pretendard', style: style };
-    text.fontSize = config.size || 14;
+    text.fontSize = fontSize;
+    text.lineHeight = { value: config.lineHeight || getLineHeight(fontSize), unit: 'PERCENT' };
     text.characters = String(config.value || '');
     if (config.color) {
       text.fills = [{ type: 'SOLID', color: hexToRgb(config.color) }];
-    }
-    if (config.lineHeight) {
-      text.lineHeight = { value: config.lineHeight, unit: 'PERCENT' };
     }
     parent.appendChild(text);
     if (config.fill) {

@@ -4,6 +4,8 @@
 
 ### 디자인 토큰 적용
 - code.js 내 하드코딩된 RGB 색상을 TOKENS 상수 객체로 교체 (Foundation/Colors.md 기반)
+- TYPO 토큰 추가 — 유효 폰트 크기(12/14/16/18/20/24/28/32)로 자동 스냅, lineHeight 자동 적용
+- 20px 이상은 Bold, 미만은 Medium 자동 적용 (weight 미지정 시)
 - 시스템 프롬프트에 custom 요소 토큰 규칙 추가 — Claude가 임의 색상/폰트 대신 DS 토큰만 사용하도록 강제
 
 ## v0.6.3 (2026-04-13)
