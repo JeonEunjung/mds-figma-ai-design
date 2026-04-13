@@ -1,4 +1,4 @@
-# MOIN AI Design — Figma Plugin (v0.6)
+# MOIN AI Design — Figma Plugin (v0.7)
 
 자연어로 화면을 설명하면 MOIN 디자인 시스템 컴포넌트로 Figma에 직접 렌더링하는 플러그인.
 
