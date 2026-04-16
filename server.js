@@ -8,6 +8,76 @@ const { execSync } = require('child_process');
 
 const PORT = 3333;
 const PLUGIN_REF = path.join(__dirname, 'plugin_reference');
+const GITHUB_REPO = 'JeonEunjung/mds-figma-ai-design';
+const GITHUB_TOKEN = process.env.GITHUB_TOKEN || '';
+
+// .env 파일 로드
+try {
+  const envPath = path.join(__dirname, '.env');
+  if (fs.existsSync(envPath)) {
+    fs.readFileSync(envPath, 'utf8').split('\n').forEach(line => {
+      const [key, ...val] = line.split('=');
+      if (key && val.length) process.env[key.trim()] = val.join('=').trim();
+    });
+  }
+} catch (e) {}
+const GH_TOKEN = process.env.GITHUB_TOKEN || '';
+
+function reportErrorToGitHub({ prompt, error, mode, claudeOutput }) {
+  if (!GH_TOKEN) return;
+  const timestamp = new Date().toISOString();
+  const errorOneLine = error.replace(/[\r\n]+/g, ' ').substring(0, 80);
+  const title = `[Plugin Error] ${errorOneLine}`;
+  const body = [
+    `## 자동 에러 리포트`,
+    ``,
+    `- **시간**: ${timestamp}`,
+    `- **모드**: ${mode || '생성'}`,
+    ``,
+    `### 에러`,
+    '```',
+    error,
+    '```',
+    ``,
+    `### 프롬프트`,
+    '```',
+    prompt || '(없음)',
+    '```',
+    ``,
+    `### Claude 응답 (일부)`,
+    '```',
+    (claudeOutput || '(없음)').substring(0, 500),
+    '```',
+  ].join('\n');
+
+  const postData = JSON.stringify({ title, body, labels: ['bug', 'auto-report'] });
+  const options = {
+    hostname: 'api.github.com',
+    path: `/repos/${GITHUB_REPO}/issues`,
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${GH_TOKEN}`,
+      'Accept': 'application/vnd.github+json',
+      'User-Agent': 'moin-ai-design-plugin',
+      'Content-Type': 'application/json',
+      'Content-Length': Buffer.byteLength(postData),
+    },
+  };
+
+  const https = require('https');
+  const req = https.request(options, (res) => {
+    if (res.statusCode === 201) {
+      console.log('[Error Report] GitHub Issue 생성 완료');
+    } else {
+      let body = '';
+      res.on('data', d => body += d);
+      res.on('end', () => console.warn('[Error Report] GitHub Issue 생성 실패:', res.statusCode, body.substring(0, 200)));
+    }
+  });
+  req.on('error', (e) => console.warn('[Error Report] 요청 실패:', e.message));
+  req.write(postData);
+  req.end();
+}
 
 // 서버 시작 시 자동 업데이트
 try {
@@ -240,12 +310,14 @@ ${designJson}
           res.end(JSON.stringify({ design }));
         } catch (err) {
           console.error('[Parse error]', err.message);
+          reportErrorToGitHub({ prompt, error: err.message, mode: designJson ? '편집' : partialJson ? '부분편집' : '생성', claudeOutput: output });
           res.writeHead(500, { 'Content-Type': 'application/json' });
           res.end(JSON.stringify({ error: err.message }));
         }
       });
 
       child.on('error', err => {
+        reportErrorToGitHub({ prompt, error: 'claude CLI 실행 실패: ' + err.message, mode: designJson ? '편집' : partialJson ? '부분편집' : '생성' });
         res.writeHead(500, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ error: 'claude CLI 실행 실패: ' + err.message }));
       });
