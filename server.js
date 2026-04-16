@@ -47,12 +47,19 @@ try {
   console.warn('[Auto-update] git pull 실패 — 기존 버전으로 실행합니다:', e.message);
 }
 
-// 5분마다 자동 업데이트 확인 → 변경 있으면 자동 재시작
+// 1시간마다 자동 업데이트 확인 → 변경 있으면 서버 자동 재시작
 setInterval(() => {
   try {
     const result = execSync('git pull', { cwd: __dirname, timeout: 10000 }).toString().trim();
     if (result !== 'Already up to date.') {
       console.log('[Auto-update] 코드 변경 감지, 서버 재시작합니다...', result);
+      // 새 프로세스로 서버 다시 실행 후 현재 프로세스 종료
+      const child = spawn('node', ['server.js'], {
+        cwd: __dirname,
+        detached: true,
+        stdio: 'inherit',
+      });
+      child.unref();
       process.exit(0);
     }
   } catch (e) {
