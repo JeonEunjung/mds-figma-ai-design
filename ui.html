@@ -67,26 +67,6 @@
   .status.error { color: #e53935; }
   .status.success { color: #2e7d32; }
 
-  details { border: 1px solid #eee; border-radius: 8px; overflow: hidden; }
-  summary {
-    padding: 10px 12px; font-size: 12px; color: #666; cursor: pointer;
-    user-select: none; list-style: none;
-  }
-  summary::-webkit-details-marker { display: none; }
-  summary::before { content: '⚙ '; }
-  .settings-body { padding: 12px; display: flex; flex-direction: column; gap: 8px; border-top: 1px solid #eee; }
-  .settings-body label { font-size: 11px; color: #888; }
-  .settings-body input {
-    width: 100%; height: 36px; border: 1px solid #e0e0e0; border-radius: 6px;
-    padding: 0 10px; font-size: 13px; outline: none;
-  }
-  .settings-body input:focus { border-color: #3b5ce6; }
-  .btn-save {
-    height: 32px; background: #f5f5f7; border: 1px solid #e0e0e0;
-    border-radius: 6px; font-size: 12px; cursor: pointer; color: #444;
-  }
-  .btn-save:hover { background: #eaeaed; }
-
   .examples { display: flex; flex-direction: column; gap: 4px; }
   .example-label { font-size: 11px; color: #888; }
   .chips { display: flex; flex-wrap: wrap; gap: 6px; }
@@ -99,6 +79,7 @@
   .server-status {
     display: flex; align-items: center; gap: 6px;
     padding: 6px 10px; border-radius: 6px; font-size: 11px;
+    margin-top: 8px;
   }
   .server-status.online { background: #e8f5e9; color: #2e7d32; }
   .server-status.offline { background: #ffeaea; color: #c62828; }
@@ -109,6 +90,28 @@
   .server-dot.online { background: #2e7d32; }
   .server-dot.offline { background: #c62828; }
   .server-dot.checking { background: #888; }
+
+  .server-guide {
+    background: #fff8f8; border: 1px solid #ffd6d6; border-radius: 8px;
+    padding: 12px; font-size: 12px; color: #444;
+    display: flex; flex-direction: column; gap: 8px;
+  }
+  .guide-title { font-weight: 600; color: #c62828; font-size: 13px; }
+  .guide-steps { display: flex; flex-direction: column; gap: 4px; line-height: 1.6; }
+  .guide-cmd {
+    display: flex; align-items: center; gap: 6px;
+    background: #f5f5f7; border-radius: 6px; padding: 6px 8px;
+  }
+  .guide-cmd code {
+    flex: 1; font-family: monospace; font-size: 11px; color: #333;
+    word-break: break-all;
+  }
+  .btn-copy {
+    background: #3b5ce6; color: white; border: none; border-radius: 4px;
+    padding: 3px 8px; font-size: 11px; cursor: pointer; white-space: nowrap;
+  }
+  .btn-copy:hover { background: #2f4dd4; }
+  .guide-note { font-size: 10px; color: #999; }
 </style>
 </head>
 <body>
@@ -116,12 +119,6 @@
   <div>
     <div class="title">MOIN AI Design</div>
     <div class="subtitle">자연어로 화면을 만들고 수정합니다</div>
-  </div>
-
-  <!-- 서버 상태 표시 -->
-  <div class="server-status" id="serverStatus">
-    <div class="server-dot offline" id="serverDot"></div>
-    <span id="serverLabel">서버 확인 중...</span>
   </div>
 
   <!-- 모드 표시 바 -->
@@ -163,14 +160,23 @@
   <div class="status" id="status"></div>
   <div id="logPanel" style="font-size:10px;color:#888;background:#f9f9f9;border:1px solid #eee;border-radius:6px;padding:6px 8px;max-height:80px;overflow-y:auto;display:none;white-space:pre-wrap;word-break:break-all;"></div>
 
-  <details>
-    <summary>API 설정</summary>
-    <div class="settings-body">
-      <label>Anthropic API Key</label>
-      <input type="password" id="apiKey" placeholder="sk-ant-..." />
-      <button class="btn-save" onclick="saveKey()">저장</button>
+  <!-- 서버 상태 (하단 고정) -->
+  <div class="server-status checking" id="serverStatus">
+    <div class="server-dot checking" id="serverDot"></div>
+    <span id="serverLabel">서버 확인 중...</span>
+  </div>
+  <div class="server-guide" id="serverGuide" style="display:none;">
+    <div class="guide-title">서버를 켜주세요</div>
+    <div class="guide-steps">
+      <div>1. <strong>⌘ + Space</strong> → "터미널" 검색 → 열기</div>
+      <div>2. 아래 명령어를 복사해서 붙여넣기 후 Enter</div>
     </div>
-  </details>
+    <div class="guide-cmd">
+      <code id="cmdText">cd mds-figma-ai-design && node server.js</code>
+      <button class="btn-copy" onclick="copyCmd()">복사</button>
+    </div>
+    <div class="guide-note">서버가 켜지면 자동으로 연결됩니다</div>
+  </div>
 </div>
 
 <script>
@@ -183,31 +189,44 @@ let refPartialJson = null;
 let refJsonPath = null;
 let refSelectedName = null;
 
+function copyCmd() {
+  const text = document.getElementById('cmdText').textContent;
+  navigator.clipboard.writeText(text).then(() => {
+    const btn = document.querySelector('.btn-copy');
+    btn.textContent = '복사됨!';
+    setTimeout(() => { btn.textContent = '복사'; }, 1500);
+  });
+}
+
 function checkServer() {
   const dot = document.getElementById('serverDot');
   const label = document.getElementById('serverLabel');
   const status = document.getElementById('serverStatus');
+  const guide = document.getElementById('serverGuide');
   const btn = document.getElementById('btnGenerate');
 
-  fetch('http://localhost:3333/health', { method: 'GET' })
+  const controller = new AbortController();
+  setTimeout(() => controller.abort(), 3000);
+
+  fetch('http://localhost:3333/health', { method: 'GET', signal: controller.signal })
     .then(r => r.json())
     .then(() => {
       dot.className = 'server-dot online';
       status.className = 'server-status online';
       label.textContent = '서버 연결됨';
+      guide.style.display = 'none';
       btn.disabled = false;
     })
     .catch(() => {
       dot.className = 'server-dot offline';
       status.className = 'server-status offline';
-      label.textContent = '서버 꺼짐 — 담당자에게 문의하세요';
+      label.textContent = '서버 꺼짐';
+      guide.style.display = '';
       btn.disabled = true;
     });
 }
 
 window.onload = () => {
-  const saved = localStorage.getItem('moin_api_key');
-  if (saved) document.getElementById('apiKey').value = saved;
   checkServer();
   setInterval(checkServer, 30000);
 };
@@ -264,11 +283,6 @@ function clearRef() {
 
 function setPrompt(text) {
   document.getElementById('prompt').value = text;
-}
-
-function saveKey() {
-  const key = document.getElementById('apiKey').value.trim();
-  if (key) { localStorage.setItem('moin_api_key', key); setStatus('API Key 저장됨', 'success'); }
 }
 
 function setStatus(msg, type = '') {
