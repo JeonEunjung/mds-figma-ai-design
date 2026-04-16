@@ -47,6 +47,19 @@ try {
   console.warn('[Auto-update] git pull 실패 — 기존 버전으로 실행합니다:', e.message);
 }
 
+// 5분마다 자동 업데이트 확인 → 변경 있으면 자동 재시작
+setInterval(() => {
+  try {
+    const result = execSync('git pull', { cwd: __dirname, timeout: 10000 }).toString().trim();
+    if (result !== 'Already up to date.') {
+      console.log('[Auto-update] 코드 변경 감지, 서버 재시작합니다...', result);
+      process.exit(0);
+    }
+  } catch (e) {
+    // git pull 실패는 무시
+  }
+}, 60 * 60 * 1000);
+
 function loadRef(basePath) {
   const sections = [
     { dir: 'Principles', label: '## Design Principles' },
