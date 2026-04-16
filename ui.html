@@ -95,6 +95,20 @@
     padding: 4px 10px; font-size: 11px; cursor: pointer; transition: background 0.1s;
   }
   .chip:hover { background: #dde4ff; }
+
+  .server-status {
+    display: flex; align-items: center; gap: 6px;
+    padding: 6px 10px; border-radius: 6px; font-size: 11px;
+  }
+  .server-status.online { background: #e8f5e9; color: #2e7d32; }
+  .server-status.offline { background: #ffeaea; color: #c62828; }
+  .server-status.checking { background: #f5f5f7; color: #888; }
+  .server-dot {
+    width: 6px; height: 6px; border-radius: 50%;
+  }
+  .server-dot.online { background: #2e7d32; }
+  .server-dot.offline { background: #c62828; }
+  .server-dot.checking { background: #888; }
 </style>
 </head>
 <body>
@@ -102,6 +116,12 @@
   <div>
     <div class="title">MOIN AI Design</div>
     <div class="subtitle">자연어로 화면을 만들고 수정합니다</div>
+  </div>
+
+  <!-- 서버 상태 표시 -->
+  <div class="server-status" id="serverStatus">
+    <div class="server-dot offline" id="serverDot"></div>
+    <span id="serverLabel">서버 확인 중...</span>
   </div>
 
   <!-- 모드 표시 바 -->
@@ -163,9 +183,33 @@ let refPartialJson = null;
 let refJsonPath = null;
 let refSelectedName = null;
 
+function checkServer() {
+  const dot = document.getElementById('serverDot');
+  const label = document.getElementById('serverLabel');
+  const status = document.getElementById('serverStatus');
+  const btn = document.getElementById('btnGenerate');
+
+  fetch('http://localhost:3333/health', { method: 'GET' })
+    .then(r => r.json())
+    .then(() => {
+      dot.className = 'server-dot online';
+      status.className = 'server-status online';
+      label.textContent = '서버 연결됨';
+      btn.disabled = false;
+    })
+    .catch(() => {
+      dot.className = 'server-dot offline';
+      status.className = 'server-status offline';
+      label.textContent = '서버 꺼짐 — 담당자에게 문의하세요';
+      btn.disabled = true;
+    });
+}
+
 window.onload = () => {
   const saved = localStorage.getItem('moin_api_key');
   if (saved) document.getElementById('apiKey').value = saved;
+  checkServer();
+  setInterval(checkServer, 30000);
 };
 
 function getSelection() {
