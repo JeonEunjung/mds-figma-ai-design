@@ -249,6 +249,21 @@
     </div>
     <div class="guide-note">서버가 켜지면 자동으로 연결됩니다</div>
   </div>
+
+  <!-- MCP 인증 패널 (Notion MCP 미연결 시에만 표시) -->
+  <div id="mcpAuthPanel" style="display:none; background:#fff8e1; border:1px solid #ffe082; border-radius:8px; padding:12px 14px; margin-top:8px;">
+    <div style="font-size:12px; font-weight:600; color:#6d4c00; margin-bottom:6px;">
+      <span id="mcpAuthIcon">⚠️</span> <span id="mcpAuthTitle">Notion MCP 인증 필요</span>
+    </div>
+    <div id="mcpAuthBody" style="font-size:11px; color:#6d4c00; line-height:1.5; margin-bottom:8px;">
+      기획안 기능을 쓰려면 Notion 인증이 필요합니다. 아래 버튼을 누르면 브라우저가 열립니다.
+    </div>
+    <button id="btnMcpAuth" onclick="startMcpAuth()"
+            style="width:100%; padding:8px 10px; background:#ff9800; color:white; border:none; border-radius:6px; font-size:12px; font-weight:600; cursor:pointer;">
+      Notion 인증하기
+    </button>
+    <div id="mcpAuthLog" style="font-size:10px; color:#6d4c00; margin-top:6px; display:none;"></div>
+  </div>
 </div>
 
 <script>
@@ -298,9 +313,97 @@ function checkServer() {
     });
 }
 
+// ─── MCP 상태 체크 & 자동 인증 온보딩 ────────────────────────────────────────
+var mcpPollTimer = null;
+
+async function checkMcpStatus() {
+  var panel = document.getElementById('mcpAuthPanel');
+  var logEl = document.getElementById('mcpAuthLog');
+  var btn = document.getElementById('btnMcpAuth');
+  var titleEl = document.getElementById('mcpAuthTitle');
+  var iconEl = document.getElementById('mcpAuthIcon');
+  var bodyEl = document.getElementById('mcpAuthBody');
+
+  try {
+    var r = await fetch('http://localhost:3333/mcp/status');
+    if (!r.ok) { panel.style.display = 'none'; return; }
+    var data = await r.json();
+
+    var notion = (data.mcpServers || []).find(function(s) { return /notion/i.test(s.name); });
+    var authState = data.authFlow ? data.authFlow.state : 'idle';
+
+    // 인증 진행 중
+    if (authState === 'awaiting_url' || authState === 'awaiting_approval' || authState === 'starting') {
+      panel.style.display = '';
+      iconEl.textContent = authState === 'awaiting_approval' ? '🌐' : '⏳';
+      titleEl.textContent = authState === 'awaiting_approval'
+        ? '브라우저에서 승인해주세요'
+        : 'Claude 대화형 세션 준비 중...';
+      bodyEl.textContent = authState === 'awaiting_approval'
+        ? '열린 브라우저 탭에서 Notion 인증을 승인하면 자동으로 완료됩니다.'
+        : '잠시만 기다려주세요.';
+      btn.style.display = 'none';
+      logEl.style.display = '';
+      logEl.textContent = 'state: ' + authState;
+      return;
+    }
+
+    // Notion MCP 연결 안 됨
+    if (!notion || notion.status !== 'connected') {
+      panel.style.display = '';
+      iconEl.textContent = '⚠️';
+      titleEl.textContent = 'Notion MCP 인증 필요';
+      bodyEl.textContent = '기획안 기능을 쓰려면 Notion 인증이 필요합니다. 아래 버튼을 누르면 브라우저가 열립니다.';
+      btn.style.display = '';
+      btn.disabled = false;
+      btn.textContent = 'Notion 인증하기';
+      logEl.style.display = 'none';
+      return;
+    }
+
+    // 모두 OK — 패널 숨김 + 빠른 폴링 중단
+    panel.style.display = 'none';
+    if (mcpPollTimer) { clearInterval(mcpPollTimer); mcpPollTimer = null; }
+  } catch (e) {
+    panel.style.display = 'none';
+  }
+}
+
+async function startMcpAuth() {
+  var btn = document.getElementById('btnMcpAuth');
+  var logEl = document.getElementById('mcpAuthLog');
+  btn.disabled = true;
+  btn.textContent = '인증 시작 중...';
+  logEl.style.display = '';
+  logEl.textContent = '';
+  try {
+    var r = await fetch('http://localhost:3333/mcp/auth', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ serverName: 'notion' }),
+    });
+    var data = await r.json();
+    if (!r.ok) {
+      logEl.textContent = '❌ ' + (data.error || '시작 실패');
+      btn.disabled = false;
+      btn.textContent = '다시 시도';
+      return;
+    }
+    logEl.textContent = '✅ ' + (data.message || '인증 플로우 시작됨');
+    if (mcpPollTimer) clearInterval(mcpPollTimer);
+    mcpPollTimer = setInterval(checkMcpStatus, 2000);
+  } catch (e) {
+    logEl.textContent = '❌ 네트워크 오류: ' + e.message;
+    btn.disabled = false;
+    btn.textContent = '다시 시도';
+  }
+}
+
 window.onload = () => {
   checkServer();
+  checkMcpStatus();
   setInterval(checkServer, 30000);
+  setInterval(checkMcpStatus, 5000);
 };
 
 function getSelection() {

@@ -5,6 +5,34 @@ const path = require('path');
 const os = require('os');
 
 const { execSync } = require('child_process');
+const McpAuthFlow = require('./mcp-auth');
+
+// ─── MCP 상태 확인 헬퍼 (Daemon 없이) ────────────────────────────────────────
+// `claude mcp get <name>` 서브프로세스를 띄워 출력을 파싱. 호출당 ~100ms.
+function checkMcpStatus(serverName) {
+  return new Promise((resolve) => {
+    const child = spawn('claude', ['mcp', 'get', serverName], { env: { ...process.env } });
+    let out = '', err = '';
+    child.stdout.on('data', d => out += d.toString());
+    child.stderr.on('data', d => err += d.toString());
+    child.on('close', () => {
+      const combined = out + err;
+      if (/No MCP server.*found|not configured|does not exist/i.test(combined)) {
+        resolve({ status: 'not_configured', raw: combined.trim() });
+      } else if (/Status:\s*.?\s*Connected/i.test(combined)) {
+        resolve({ status: 'connected', raw: combined.trim() });
+      } else if (/Needs authentication|needs.*auth/i.test(combined)) {
+        resolve({ status: 'needs_auth', raw: combined.trim() });
+      } else {
+        resolve({ status: 'unknown', raw: combined.trim() });
+      }
+    });
+    child.on('error', e => resolve({ status: 'error', error: e.message }));
+  });
+}
+
+// MCP 인증 플로우 — 한 번에 하나만 진행
+let activeAuthFlow = null;
 
 // notion-scraper는 playwright에 의존. /generate 테스트만 할 때는 설치 불필요하도록 지연 로드.
 let _notionScraper = null;
@@ -426,6 +454,76 @@ const server = http.createServer((req, res) => {
     return;
   }
 
+  // ─── MCP 상태 / 자동 인증 온보딩 ────────────────────────────────────────────
+  // UI가 폴링해서 Notion MCP 연결 상태 + 진행 중 인증 플로우 상태 확인.
+  if (req.method === 'GET' && req.url === '/mcp/status') {
+    (async () => {
+      const notion = await checkMcpStatus('notion');
+      const authFlow = activeAuthFlow ? activeAuthFlow.status() : { state: 'idle' };
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({
+        mcpServers: [{ name: 'notion', status: notion.status }],
+        allConnected: notion.status === 'connected',
+        authFlow,
+      }));
+    })();
+    return;
+  }
+
+  // "Notion 인증하기" 버튼 클릭 시. PTY claude를 띄워 OAuth를 자동 진행.
+  if (req.method === 'POST' && req.url === '/mcp/auth') {
+    let body = '';
+    req.on('data', c => body += c);
+    req.on('end', () => {
+      let serverName = 'notion';
+      try { const p = JSON.parse(body || '{}'); if (p.serverName) serverName = p.serverName; } catch(e) {}
+
+      if (activeAuthFlow && activeAuthFlow.status().running) {
+        res.writeHead(409, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: '이미 진행 중인 인증 플로우가 있습니다.', status: activeAuthFlow.status() }));
+        return;
+      }
+
+      const flow = new McpAuthFlow({ serverName });
+      if (!flow.isAvailable()) {
+        res.writeHead(500, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'node-pty 미설치. `npm install` 후 재시작 필요.' }));
+        return;
+      }
+
+      activeAuthFlow = flow;
+
+      flow.on('url', (url) => {
+        console.log('[Auth] OAuth URL 감지, 브라우저 자동 열기:', url.substring(0, 80) + '...');
+      });
+      flow.on('success', () => {
+        console.log('[Auth] ✅ MCP 인증 완료');
+        // 세션 파일이 이전 미인증 상태일 수 있으니 초기화 → 다음 요청부터 새 세션
+        clearSessionId();
+      });
+      flow.on('error', (err) => {
+        console.error('[Auth] 인증 플로우 에러:', err.message);
+      });
+
+      flow.start();
+
+      // 즉시 202 반환. 클라이언트는 /mcp/status로 진행 상황 폴링.
+      res.writeHead(202, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ ok: true, message: '인증 플로우 시작됨. /mcp/status로 상태 확인.', serverName }));
+    });
+    return;
+  }
+
+  if (req.method === 'POST' && req.url === '/mcp/auth/cancel') {
+    if (activeAuthFlow) {
+      activeAuthFlow.cancel();
+      activeAuthFlow = null;
+    }
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ ok: true }));
+    return;
+  }
+
   // ─── 디자인 푸시/폴링 (Claude Code → Figma 플러그인) ───────────────────────
   if (req.method === 'POST' && req.url === '/push-designs') {
     let body = '';
@@ -507,6 +605,20 @@ const server = http.createServer((req, res) => {
       }
 
       console.log('[Notion] 기획안 요청:', notionUrl);
+
+      // Notion MCP 연결 상태 선체크. 미연결 시 412로 반환 → UI가 "인증하기" 버튼 표시.
+      const mcpCheck = await checkMcpStatus('notion');
+      if (mcpCheck.status !== 'connected') {
+        console.warn('[Notion] MCP 미연결 상태 (' + mcpCheck.status + ') → 412 반환');
+        res.writeHead(412, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({
+          error: 'Notion MCP가 연결되어 있지 않습니다.',
+          needsAuth: true,
+          mcpStatus: mcpCheck.status,
+          hint: 'POST /mcp/auth로 인증 플로우를 시작하거나 UI의 "Notion 인증하기" 버튼을 누르세요.',
+        }));
+        return;
+      }
 
       // Claude가 mcp__notion__notion-fetch 도구로 직접 페이지를 읽어서 설계한다.
       // Playwright 스크래퍼 경로 제거 — 이미 인증된 user scope Notion MCP 활용.

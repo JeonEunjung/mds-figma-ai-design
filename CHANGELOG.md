@@ -1,5 +1,35 @@
 # Changelog
 
+## v0.9.0 (2026-04-22) — MCP 영속화 + 자동 OAuth 온보딩
+
+### 두 전략 결합 (v0.8.1-resume + 온보딩 전용 PTY 세션)
+- **본체**: `claude -p --resume`로 MCP 연결 상태 유지 (Option 3)
+- **온보딩**: 미인증 MCP 감지 시 임시 PTY claude로 OAuth 자동 진행 (Option 4의 mcp-auth 부분만 차용)
+
+### 추가 (온보딩)
+- `mcp-auth.js` — node-pty로 대화형 claude 실행, `/mcp` 커맨드 자동 전송
+  - OAuth URL stdout 파싱 → `open "URL"`로 Chrome 자동 실행
+  - "Connected" / "Authenticated" 메시지 감지 시 `/quit` 전송 후 종료
+  - 5분 타임아웃, 상태 이벤트(`url`, `success`, `error`) emit
+- `checkMcpStatus()` — `claude mcp get <name>` 서브프로세스 결과 파싱
+  - Daemon 없이 호출당 ~100ms로 상태 조회
+
+### 새 엔드포인트
+- `GET /mcp/status` — Notion MCP 연결 상태 + 진행 중 인증 플로우 상태
+- `POST /mcp/auth` — 인증 플로우 시작 (202 즉시 응답, 진행은 폴링)
+- `POST /mcp/auth/cancel` — 진행 중 인증 취소
+- `/generate-from-notion`: MCP 미연결 시 412 + `needsAuth: true` 반환
+
+### UI (`ui.html`)
+- 하단 MCP 인증 패널 추가 (미연결 시에만 노출)
+- 5초 주기 `/mcp/status` 폴링 → 상태 변화 자동 반영
+- 인증 진행 단계별 아이콘 (⚠️ 미연결 → ⏳ 준비 중 → 🌐 브라우저 승인 → 숨김)
+- "Notion 인증하기" 버튼 1-클릭 OAuth
+
+### 호환성
+- 포트 `3333` 유지 (기존 플러그인 매니페스트 재등록 불필요)
+- `--dangerously-skip-permissions` 포함 (MCP 도구 자동 허용)
+
 ## v0.8.1-resume (2026-04-22) — 실험: Claude 세션 재사용
 
 ### MCP 연결 유지를 위한 `--resume` 도입
