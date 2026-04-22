@@ -5,10 +5,123 @@ const path = require('path');
 const os = require('os');
 
 const { execSync } = require('child_process');
+const { scrapeNotionPage, loginAndSaveSession, ensureSession } = require('./notion-scraper');
 
 const PORT = 3333;
 const PLUGIN_REF = path.join(__dirname, 'plugin_reference');
 const ERROR_REPORT_URL = 'https://error-reporter.vercel.app/api/report';
+
+// ─── Notion API (fallback) ───────────────────────────────────────────────────
+const NOTION_TOKEN = process.env.NOTION_TOKEN || '';
+const NOTION_VERSION = '2022-06-28';
+
+function notionFetch(endpoint) {
+  const https = require('https');
+  return new Promise((resolve, reject) => {
+    const url = new URL('https://api.notion.com' + endpoint);
+    const req = https.request({
+      hostname: url.hostname,
+      path: url.pathname + url.search,
+      method: 'GET',
+      headers: {
+        'Authorization': 'Bearer ' + NOTION_TOKEN,
+        'Notion-Version': NOTION_VERSION,
+      },
+    }, (res) => {
+      let body = '';
+      res.on('data', d => body += d);
+      res.on('end', () => {
+        if (res.statusCode !== 200) {
+          reject(new Error('Notion API ' + res.statusCode + ': ' + body.substring(0, 300)));
+          return;
+        }
+        try { resolve(JSON.parse(body)); }
+        catch (e) { reject(new Error('Notion JSON 파싱 실패')); }
+      });
+    });
+    req.on('error', reject);
+    req.end();
+  });
+}
+
+function extractPageId(url) {
+  // https://www.notion.so/workspace/Title-abc123 또는 ?v=... 등
+  const clean = url.split('?')[0].split('#')[0];
+  const match = clean.match(/([a-f0-9]{32})$/) || clean.match(/([a-f0-9-]{36})$/);
+  if (match) {
+    const raw = match[1].replace(/-/g, '');
+    return raw.slice(0,8) + '-' + raw.slice(8,12) + '-' + raw.slice(12,16) + '-' + raw.slice(16,20) + '-' + raw.slice(20);
+  }
+  return null;
+}
+
+function richTextToPlain(richTexts) {
+  return (richTexts || []).map(t => t.plain_text || '').join('');
+}
+
+function blockToText(block, depth) {
+  depth = depth || 0;
+  const indent = '  '.repeat(depth);
+  const type = block.type;
+  const data = block[type];
+  if (!data) return '';
+
+  let text = '';
+  const rt = richTextToPlain(data.rich_text || data.text);
+
+  switch (type) {
+    case 'heading_1': text = indent + '# ' + rt; break;
+    case 'heading_2': text = indent + '## ' + rt; break;
+    case 'heading_3': text = indent + '### ' + rt; break;
+    case 'paragraph': text = indent + rt; break;
+    case 'bulleted_list_item': text = indent + '- ' + rt; break;
+    case 'numbered_list_item': text = indent + '1. ' + rt; break;
+    case 'to_do':
+      text = indent + (data.checked ? '[x] ' : '[ ] ') + rt; break;
+    case 'toggle': text = indent + '▸ ' + rt; break;
+    case 'quote': text = indent + '> ' + rt; break;
+    case 'callout': text = indent + '💡 ' + rt; break;
+    case 'code': text = indent + '```\n' + rt + '\n```'; break;
+    case 'divider': text = indent + '---'; break;
+    case 'table_row':
+      text = indent + '| ' + (data.cells || []).map(c => richTextToPlain(c)).join(' | ') + ' |'; break;
+    default:
+      if (rt) text = indent + rt;
+  }
+  return text;
+}
+
+async function fetchAllBlocks(pageId) {
+  let blocks = [];
+  let cursor = undefined;
+  do {
+    const endpoint = '/v1/blocks/' + pageId + '/children?page_size=100' + (cursor ? '&start_cursor=' + cursor : '');
+    const resp = await notionFetch(endpoint);
+    blocks = blocks.concat(resp.results || []);
+    cursor = resp.has_more ? resp.next_cursor : undefined;
+  } while (cursor);
+
+  // 하위 블록 재귀 탐색 (toggle, callout 등)
+  for (let i = 0; i < blocks.length; i++) {
+    if (blocks[i].has_children) {
+      blocks[i]._children = await fetchAllBlocks(blocks[i].id);
+    }
+  }
+  return blocks;
+}
+
+function blocksToMarkdown(blocks, depth) {
+  depth = depth || 0;
+  let lines = [];
+  for (const block of blocks) {
+    const line = blockToText(block, depth);
+    if (line) lines.push(line);
+    if (block._children) {
+      lines.push(blocksToMarkdown(block._children, depth + 1));
+    }
+  }
+  return lines.join('\n');
+}
 
 function reportErrorToGitHub({ prompt, error, mode, claudeOutput }) {
   const https = require('https');
@@ -90,6 +203,9 @@ function loadRef(basePath) {
 }
 
 const DESIGN_REFERENCE = loadRef(PLUGIN_REF);
+
+// Claude Code에서 푸시한 디자인을 Figma 플러그인이 가져감
+let pendingDesigns = null;
 
 const SYSTEM_PROMPT = `You are an AI designer for MOIN, a B2B remittance/payment SaaS platform.
 Output ONLY a valid JSON object wrapped in \`\`\`json ... \`\`\` block. No explanation.
@@ -191,6 +307,184 @@ const server = http.createServer((req, res) => {
   if (req.method === 'GET' && req.url === '/health') {
     res.writeHead(200, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify({ status: 'ok' }));
+    return;
+  }
+
+  // ─── 디자인 푸시/폴링 (Claude Code → Figma 플러그인) ───────────────────────
+  if (req.method === 'POST' && req.url === '/push-designs') {
+    let body = '';
+    req.on('data', chunk => body += chunk);
+    req.on('end', () => {
+      try {
+        const data = JSON.parse(body);
+        pendingDesigns = data;
+        console.log('[Push] 디자인 수신:', data.flowName, '—', (data.designs || []).length + '개 화면');
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ ok: true }));
+      } catch (e) {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'Invalid JSON' }));
+      }
+    });
+    return;
+  }
+
+  if (req.method === 'GET' && req.url === '/pending-designs') {
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    if (pendingDesigns) {
+      const data = pendingDesigns;
+      pendingDesigns = null;
+      res.end(JSON.stringify(data));
+    } else {
+      res.end(JSON.stringify({}));
+    }
+    return;
+  }
+
+  // ─── Notion 기획안 → 멀티 화면 생성 ─────────────────────────────────────────
+  // ─── Notion 로그인 (첫 사용 시) ─────────────────────────────────────────────
+  if (req.method === 'POST' && req.url === '/notion-login') {
+    loginAndSaveSession()
+      .then(() => {
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ ok: true }));
+      })
+      .catch(err => {
+        res.writeHead(500, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: err.message }));
+      });
+    return;
+  }
+
+  // ─── Notion 세션 상태 확인 ──────────────────────────────────────────────────
+  if (req.method === 'GET' && req.url === '/notion-status') {
+    const hasSession = fs.existsSync(path.join(__dirname, '.notion-session.json'));
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ connected: hasSession }));
+    return;
+  }
+
+  // ─── Notion 기획안 → 멀티 화면 생성 (Playwright) ────────────────────────────
+  if (req.method === 'POST' && req.url === '/generate-from-notion') {
+    let body = '';
+    req.on('data', chunk => body += chunk);
+    req.on('end', async () => {
+      let notionUrl;
+      try {
+        const parsed = JSON.parse(body);
+        notionUrl = parsed.notionUrl;
+      } catch (e) {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'Invalid JSON body' }));
+        return;
+      }
+
+      if (!notionUrl) {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'notionUrl is required' }));
+        return;
+      }
+
+      console.log('[Notion] 기획안 요청:', notionUrl);
+
+      // 1) Playwright로 기획안 내용 읽기
+      let notionContent;
+      try {
+        notionContent = await scrapeNotionPage(notionUrl);
+        if (!notionContent || notionContent.length < 50) {
+          throw new Error('페이지 내용을 충분히 추출하지 못했습니다. Notion에 로그인이 필요할 수 있어요.');
+        }
+        console.log('[Notion] 기획안 읽기 완료:', notionContent.length, '자');
+      } catch (err) {
+        console.error('[Notion] 스크래핑 오류:', err.message);
+        res.writeHead(500, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'Notion 페이지 읽기 실패: ' + err.message, needsLogin: !fs.existsSync(path.join(__dirname, '.notion-session.json')) }));
+        return;
+      }
+
+      // 2) 기획안 내용을 Claude에 넘겨서 화면 설계
+      const notionPrompt = SYSTEM_PROMPT + `
+
+## 기획안 기반 멀티 화면 설계
+
+아래는 Notion에서 가져온 기획안 내용이야. 이걸 분석해서 필요한 화면 플로우를 설계해줘.
+
+### 기획안 내용:
+${notionContent}
+
+### 작업 순서:
+1. 기획안에서 필요한 화면들을 파악해 (목록, 상세, 입력폼, 확인 모달 등)
+2. 사용자 플로우 순서대로 화면을 정렬해
+3. 각 화면을 MOIN 디자인 시스템으로 설계해
+
+### 출력 규칙:
+- 반드시 아래 JSON 형식으로 출력 (다른 텍스트 없이)
+- screens 배열에 각 화면 JSON을 플로우 순서대로 넣어
+- 각 화면은 기존 스키마와 동일한 구조 (pageName, width, height, sections)
+- 화면 간 연결이 자연스럽도록 LNB 활성 메뉴를 일관되게 유지
+
+\`\`\`json
+{
+  "flowName": "플로우 이름",
+  "screens": [
+    {
+      "pageName": "화면1 이름",
+      "width": 1440,
+      "height": 900,
+      "sections": [...]
+    },
+    {
+      "pageName": "화면2 이름",
+      "width": 1440,
+      "height": 900,
+      "sections": [...]
+    }
+  ]
+}
+\`\`\``;
+
+      const child = spawn('claude', ['-p', notionPrompt], {
+        env: { ...process.env },
+        timeout: 180000,
+      });
+
+      let output = '';
+      let errOutput = '';
+
+      child.stdout.on('data', data => output += data.toString());
+      child.stderr.on('data', data => errOutput += data.toString());
+
+      child.on('close', code => {
+        if (errOutput) console.error('[Claude stderr]', errOutput.substring(0, 500));
+        console.log('[Claude exit code]', code, '[output length]', output.length);
+
+        try {
+          const match = output.match(/```json\n([\s\S]*?)\n```/) || output.match(/(\{[\s\S]*\})/);
+          if (!match) throw new Error('JSON을 찾을 수 없음. 응답: ' + output.substring(0, 500));
+
+          const result = JSON.parse(match[1] || match[0]);
+
+          if (result.screens && Array.isArray(result.screens)) {
+            res.writeHead(200, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ flowName: result.flowName, designs: result.screens }));
+          } else {
+            res.writeHead(200, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ flowName: result.pageName || '화면', designs: [result] }));
+          }
+        } catch (err) {
+          console.error('[Parse error]', err.message);
+          reportErrorToGitHub({ prompt: 'Notion: ' + notionUrl, error: err.message, mode: '기획안', claudeOutput: output });
+          res.writeHead(500, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: err.message }));
+        }
+      });
+
+      child.on('error', err => {
+        reportErrorToGitHub({ prompt: 'Notion: ' + notionUrl, error: 'claude CLI 실행 실패: ' + err.message, mode: '기획안' });
+        res.writeHead(500, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'claude CLI 실행 실패: ' + err.message }));
+      });
+    });
     return;
   }
 
