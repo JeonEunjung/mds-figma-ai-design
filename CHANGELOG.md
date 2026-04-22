@@ -1,5 +1,19 @@
 # Changelog
 
+## v0.8.1-resume (2026-04-22) — 실험: Claude 세션 재사용
+
+### MCP 연결 유지를 위한 `--resume` 도입
+- `claude -p`는 매 호출마다 새 세션이라 Notion MCP 등 OAuth 기반 MCP가 재인증되는 문제 해결 시도
+- `--output-format json`으로 응답 받아 `session_id` 추출 → `.claude-session-id` 파일에 저장
+- 이후 호출은 `--resume <session_id>`로 이전 세션을 이어받아 MCP 연결 상태 보존
+- 세션 만료/유실 감지 시 자동으로 새 세션 시작 (1회 재시도)
+- `GET /session`, `DELETE /session` 엔드포인트 추가 — 세션 상태 조회/초기화
+- `.gitignore`에 `.claude-session-id`, `.notion-session.json` 추가
+
+### 전제 조건
+- 첫 세션은 반드시 대화형 `claude`에서 `/mcp connect notion` + OAuth 완료 후 시작해야 함 (비대화형 `-p` 모드에서는 OAuth 브라우저 플로우 불가)
+- 자세한 절차는 `SETUP_SESSION.md` 참조
+
 ## v0.8.0 (2026-04-22)
 
 ### Notion 기획안 → 멀티 화면 자동 설계
