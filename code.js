@@ -474,40 +474,6 @@ figma.ui.onmessage = async (msg) => {
   }
 
 
-  // ─── 멀티 화면 렌더링 (기획안 모드) ──────────────────────────────────────────
-  if (msg.type === 'RENDER_MULTI') {
-    try {
-      var designs = msg.designs;
-      var flowName = msg.flowName || '기획안 플로우';
-      var GAP = 100;
-      var beforeCount = figma.currentPage.children.length;
-
-      for (var mi = 0; mi < designs.length; mi++) {
-        await renderDesign(designs[mi]);
-      }
-
-      // 생성된 프레임들을 나란히 배치
-      var newFrames = [];
-      var xOffset = 0;
-      for (var fi = beforeCount; fi < figma.currentPage.children.length; fi++) {
-        var f = figma.currentPage.children[fi];
-        f.x = xOffset;
-        f.y = 0;
-        newFrames.push(f);
-        xOffset += f.width + GAP;
-      }
-
-      // 뷰포트를 전체 프레임이 보이도록 이동
-      if (newFrames.length > 0) {
-        figma.viewport.scrollAndZoomIntoView(newFrames);
-      }
-
-      figma.ui.postMessage({ type: 'DONE', info: flowName + ' — ' + designs.length + '개 화면 생성' });
-    } catch (err) {
-      figma.ui.postMessage({ type: 'ERROR', error: err.message });
-    }
-  }
-
   if (msg.type === 'RENDER_EDIT') {
     figma.ui.postMessage({ type: 'LOG', msg: 'RENDER_EDIT 수신, nodeId=' + msg.nodeId });
     const frame = msg.nodeId ? figma.getNodeById(msg.nodeId) : null;
