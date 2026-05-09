@@ -1,5 +1,58 @@
 # Changelog
 
+## v0.9.0 (2026-04-22) — MCP 영속화 + 자동 OAuth 온보딩
+
+### 두 전략 결합 (v0.8.1-resume + 온보딩 전용 PTY 세션)
+- **본체**: `claude -p --resume`로 MCP 연결 상태 유지 (Option 3)
+- **온보딩**: 미인증 MCP 감지 시 임시 PTY claude로 OAuth 자동 진행 (Option 4의 mcp-auth 부분만 차용)
+
+### 추가 (온보딩)
+- `mcp-auth.js` — node-pty로 대화형 claude 실행, `/mcp` 커맨드 자동 전송
+  - OAuth URL stdout 파싱 → `open "URL"`로 Chrome 자동 실행
+  - "Connected" / "Authenticated" 메시지 감지 시 `/quit` 전송 후 종료
+  - 5분 타임아웃, 상태 이벤트(`url`, `success`, `error`) emit
+- `checkMcpStatus()` — `claude mcp get <name>` 서브프로세스 결과 파싱
+  - Daemon 없이 호출당 ~100ms로 상태 조회
+
+### 새 엔드포인트
+- `GET /mcp/status` — Notion MCP 연결 상태 + 진행 중 인증 플로우 상태
+- `POST /mcp/auth` — 인증 플로우 시작 (202 즉시 응답, 진행은 폴링)
+- `POST /mcp/auth/cancel` — 진행 중 인증 취소
+- `/generate-from-notion`: MCP 미연결 시 412 + `needsAuth: true` 반환
+
+### UI (`ui.html`)
+- 하단 MCP 인증 패널 추가 (미연결 시에만 노출)
+- 5초 주기 `/mcp/status` 폴링 → 상태 변화 자동 반영
+- 인증 진행 단계별 아이콘 (⚠️ 미연결 → ⏳ 준비 중 → 🌐 브라우저 승인 → 숨김)
+- "Notion 인증하기" 버튼 1-클릭 OAuth
+
+### 호환성
+- 포트 `3333` 유지 (기존 플러그인 매니페스트 재등록 불필요)
+- `--dangerously-skip-permissions` 포함 (MCP 도구 자동 허용)
+
+## v0.8.1-resume (2026-04-22) — 실험: Claude 세션 재사용
+
+### MCP 연결 유지를 위한 `--resume` 도입
+- `claude -p`는 매 호출마다 새 세션이라 Notion MCP 등 OAuth 기반 MCP가 재인증되는 문제 해결 시도
+- `--output-format json`으로 응답 받아 `session_id` 추출 → `.claude-session-id` 파일에 저장
+- 이후 호출은 `--resume <session_id>`로 이전 세션을 이어받아 MCP 연결 상태 보존
+- 세션 만료/유실 감지 시 자동으로 새 세션 시작 (1회 재시도)
+- `GET /session`, `DELETE /session` 엔드포인트 추가 — 세션 상태 조회/초기화
+- `.gitignore`에 `.claude-session-id`, `.notion-session.json` 추가
+
+### 전제 조건
+- 첫 세션은 반드시 대화형 `claude`에서 `/mcp connect notion` + OAuth 완료 후 시작해야 함 (비대화형 `-p` 모드에서는 OAuth 브라우저 플로우 불가)
+- 자세한 절차는 `SETUP_SESSION.md` 참조
+
+## v0.8.0 (2026-04-22)
+
+### Notion 기획안 → 멀티 화면 자동 설계
+- **기획안 모드 추가**: 플러그인 UI에 "프롬프트/기획안" 탭 전환 추가
+- **Claude Code 연동**: Claude Code에서 Notion 기획안을 읽고 디자인을 Figma 플러그인으로 자동 전송
+- **멀티 화면 렌더링**: 기획안에서 파악한 여러 화면을 Figma 캔버스에 나란히 배치 (100px 간격)
+- **서버 엔드포인트**: `/push-designs` (Claude Code → 서버), `/pending-designs` (서버 → 플러그인 폴링)
+- 기획안 탭 진입 시 2초 간격 자동 폴링, 편집 모드에서는 기획안 탭 자동 숨김
+
 ## v0.7.0 (2026-04-13)
 
 ### DS Variable & Text Style 바인딩
