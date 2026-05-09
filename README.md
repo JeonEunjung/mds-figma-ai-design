@@ -1,6 +1,6 @@
-# MOIN AI Design — Figma Plugin (v0.7)
+# MOIN AI Design — Figma Plugin (v0.9.1)
 
-자연어로 화면을 설명하면 MOIN 디자인 시스템 컴포넌트로 Figma에 직접 렌더링하는 플러그인.
+자연어 또는 Notion 기획안 URL로 화면을 설계하면 MOIN 디자인 시스템 컴포넌트로 Figma에 직접 렌더링하는 플러그인.
 
 ## 사전 준비
 
@@ -42,8 +42,14 @@ node server.js
 
 ## 기능
 
-### 생성 모드
-프롬프트로 새 화면을 생성합니다.
+### 생성 모드 (프롬프트)
+자연어 프롬프트로 새 화면을 생성합니다.
+
+### 기획안 모드 (Notion URL)
+Notion 기획안 URL을 넣으면 여러 화면을 한 번에 자동 설계합니다.
+- 회사 Notion(themoin-op) 페이지는 Notion MCP로 직접 fetch
+- 모달은 본문 규모에 따라 단순 확인(400px) / 입력 폼(560~720px) / 대량 데이터(1200px Page Modal)로 자동 분기
+- 권한 없는 페이지는 안내 화면을 자동 생성
 
 ### 편집 모드
 플러그인으로 만든 프레임을 선택하면 자동으로 편집 모드 진입.
