@@ -1219,6 +1219,54 @@ async function applyTextMap(instance, mapKey, values) {
 
 // ─── Tab ─────────────────────────────────────────────────────────────────────
 // ─── Modal ────────────────────────────────────────────────────────────────────
+// 푸터/본문 단일 버튼 렌더 헬퍼 (Top의 swapComponent 흐름과 동일하게 단순화)
+async function renderModalButton(parent, label, variant) {
+  const v = variant || 'secondary';
+  const key = KEYS.Button[v] !== undefined ? KEYS.Button[v] : KEYS.Button.secondary;
+  const comp = await figma.importComponentByKeyAsync(key);
+  const inst = comp.createInstance();
+  parent.appendChild(inst);
+  // 아이콘 슬롯 숨김
+  var iconNodes = inst.findAll(function(n) { return n.name === 'Icon-wrapper'; });
+  for (var i = 0; i < iconNodes.length; i++) iconNodes[i].visible = false;
+  // 라벨 적용
+  var textNode = inst.findOne(function(n) { return n.type === 'TEXT' && n.name === 'Button'; });
+  if (textNode && label) {
+    try {
+      await figma.loadFontAsync(textNode.fontName);
+      textNode.characters = label;
+    } catch(e) {}
+  }
+  return inst;
+}
+
+// modal 본문 children 디스패처 (renderMain/renderCard와 동일한 컴포넌트 셋)
+async function renderModalChild(parent, child) {
+  if      (child.type === 'top')        await renderTop(parent, child);
+  else if (child.type === 'table')      await renderTable(parent, child);
+  else if (child.type === 'card')       await renderCard(parent, child);
+  else if (child.type === 'searchbar')  await renderSearchBar(parent, child);
+  else if (child.type === 'filterbar')  await renderFilterBar(parent, child);
+  else if (child.type === 'tab')        await renderTab(parent, child);
+  else if (child.type === 'chipgroup')  await renderChipGroup(parent, child);
+  else if (child.type === 'spinner')    await renderSpinner(parent, child);
+  else if (child.type === 'textfield')  await renderTextField(parent, child);
+  else if (child.type === 'textarea')   await renderTextArea(parent, child);
+  else if (child.type === 'checkbox')   await renderCheckbox(parent, child);
+  else if (child.type === 'radio')      await renderRadioButton(parent, child);
+  else if (child.type === 'switch')     await renderSwitch(parent, child);
+  else if (child.type === 'formgroup')  await renderFormGroup(parent, child);
+  else if (child.type === 'iconbutton') await renderIconButton(parent, child);
+  else if (child.type === 'textbutton') await renderTextButton(parent, child);
+  else if (child.type === 'pagination') await renderPagination(parent, child);
+  else if (child.type === 'tooltip')    await renderTooltip(parent, child);
+  else if (child.type === 'accordion')  await renderAccordion(parent, child);
+  else if (child.type === 'statusbadge') await renderStatusBadge(parent, child);
+  else if (child.type === 'signal')     await renderSignal(parent, child);
+  else if (child.type === 'custom')     await renderCustom(parent, child);
+  else figma.ui.postMessage({ type: 'WARN', msg: '미지원 modal body 타입: ' + child.type });
+}
+
 async function renderModal(parent, config, W, H) {
   // 어두운 오버레이
   const overlay = figma.createFrame();
@@ -1230,14 +1278,87 @@ async function renderModal(parent, config, W, H) {
   overlay.layoutMode = 'NONE';
   parent.appendChild(overlay);
 
-  // title/description 여부에 따라 variant 선택
+  // body가 있으면 composite 모달 — Page Modal 스타일(자유 본문)
+  var body = config.body || [];
+  if (body.length > 0) {
+    var modalWidth = config.width || (body.length >= 3 ? 720 : 560);
+    const frame = figma.createFrame();
+    frame.name = 'PageModal';
+    frame.layoutMode = 'VERTICAL';
+    frame.itemSpacing = 16;
+    frame.paddingTop = 24;
+    frame.paddingBottom = 24;
+    frame.paddingLeft = 24;
+    frame.paddingRight = 24;
+    frame.cornerRadius = 16;
+    frame.fills = [{ type: 'SOLID', color: TOKENS.white }];
+    frame.resize(modalWidth, 100); // height는 HUG로 자동 조정
+    parent.appendChild(frame);
+    frame.layoutSizingVertical = 'HUG';
+
+    // Header (title + description)
+    if (config.title || config.description) {
+      const header = figma.createFrame();
+      header.name = 'Header';
+      header.layoutMode = 'VERTICAL';
+      header.itemSpacing = 4;
+      header.fills = [];
+      frame.appendChild(header);
+      header.layoutSizingHorizontal = 'FILL';
+      header.layoutSizingVertical = 'HUG';
+      if (config.title) {
+        await renderCustom(header, { type: 'text', value: config.title, size: 20, weight: 700, fill: true });
+      }
+      if (config.description) {
+        await renderCustom(header, { type: 'text', value: config.description, size: 14, weight: 500, color: '#5C5F66', fill: true });
+      }
+    }
+
+    // Body
+    const bodyFrame = figma.createFrame();
+    bodyFrame.name = 'Body';
+    bodyFrame.layoutMode = 'VERTICAL';
+    bodyFrame.itemSpacing = 12;
+    bodyFrame.fills = [];
+    frame.appendChild(bodyFrame);
+    bodyFrame.layoutSizingHorizontal = 'FILL';
+    bodyFrame.layoutSizingVertical = 'HUG';
+    for (var bi = 0; bi < body.length; bi++) {
+      await renderModalChild(bodyFrame, body[bi]);
+    }
+
+    // Footer (CTA + dismiss)
+    if (config.ctaLabel || config.dismissLabel) {
+      const footer = figma.createFrame();
+      footer.name = 'Footer';
+      footer.layoutMode = 'HORIZONTAL';
+      footer.itemSpacing = 8;
+      footer.primaryAxisAlignItems = 'MAX'; // 우측 정렬
+      footer.fills = [];
+      frame.appendChild(footer);
+      footer.layoutSizingHorizontal = 'FILL';
+      footer.layoutSizingVertical = 'HUG';
+      if (config.dismissLabel) {
+        await renderModalButton(footer, config.dismissLabel, 'tertiary2');
+      }
+      if (config.ctaLabel) {
+        await renderModalButton(footer, config.ctaLabel, 'primary');
+      }
+    }
+
+    // 화면 중앙 배치 (relayout 후 좌표 계산)
+    frame.x = Math.round((W - frame.width) / 2);
+    frame.y = Math.round((H - frame.height) / 2);
+    return frame;
+  }
+
+  // 단순 확인 모달 — published Modal 컴포넌트 사용 (기존 동작 유지)
   var hasTitle = !!(config.title || config.description);
   var key = hasTitle ? KEYS.Modal.withTitle : KEYS.Modal.withoutTitle;
   const comp = await figma.importComponentByKeyAsync(key);
   const instance = comp.createInstance();
   parent.appendChild(instance);
 
-  // title/description boolean 프로퍼티 설정
   try {
     var setObj = {};
     setObj['title#7455:0'] = !!(config.title);
@@ -1245,10 +1366,8 @@ async function renderModal(parent, config, W, H) {
     instance.setProperties(setObj);
   } catch(e) {}
 
-  // 텍스트 오버라이드
   await applyTextMap(instance, 'modal', config);
 
-  // 화면 중앙 배치
   instance.x = Math.round((W - instance.width) / 2);
   instance.y = Math.round((H - instance.height) / 2);
 

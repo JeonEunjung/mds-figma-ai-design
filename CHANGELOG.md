@@ -1,5 +1,26 @@
 # Changelog
 
+## v0.9.1 (2026-05-09) — Modal body 슬롯 지원 (Page Modal 스타일)
+
+### 변경
+- `modal` 스키마에 `body` (선택) + `width` (선택) 추가
+  - body가 있으면 published Modal 컴포넌트 대신 composite로 렌더 (overlay + 흰 컨테이너 + 헤더/본문/푸터)
+  - body 안에는 card/table/searchbar/filterbar/chipgroup/textfield/formgroup/custom 등 자유 배치
+  - 단순 확인 모달(body 없음)은 기존 published Modal 컴포넌트 그대로 사용
+- `code.js` — `renderModal` composite 분기, `renderModalChild` 디스패처 + `renderModalButton` 헬퍼 추가
+- `server.js` SYSTEM_PROMPT — modal 결정 룰 + 본문은 DS 컴포넌트 우선(custom 도배 금지) + DS 컴포넌트 위주 예시 3종
+- `plugin_reference/Component/Modal.md` — body 사용 가이드 압축 + custom 도배 금지 룰 추가
+
+### 알게 된 점
+초기 예시가 모두 `custom > text` 위주여서 AI가 모달 본문에 custom만 도배하는 회귀가 발생.
+예시를 formgroup/chipgroup/table 등 진짜 DS 컴포넌트 위주로 바꾸고 "custom은 비표준 UI에만"
+룰을 명시한 뒤 정상화. 메인 화면 quality도 함께 회복.
+
+### 배경
+Notion 기획안 → 멀티화면 자동 설계에서 복잡한 모달(파일 업로드, Validation 오류 목록 등)이
+모두 빈 컴포넌트로 떨어지는 문제. published Modal에 본문 슬롯이 없고 스키마도 텍스트 4개 필드만
+받게 돼있어서 발생.
+
 ## v0.9.0 (2026-04-22) — MCP 영속화 + 자동 OAuth 온보딩
 
 ### 두 전략 결합 (v0.8.1-resume + 온보딩 전용 PTY 세션)

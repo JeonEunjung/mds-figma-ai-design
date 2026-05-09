@@ -38,13 +38,55 @@ Modal Template로 감쌀 때 4단계 어둡기 사용:
 | description | 사용자가 결정할 내용 1-2줄 |
 | ctaLabel | 주요 액션 버튼 텍스트 (예: "신청하기", "삭제") |
 | dismissLabel | 보조/취소 버튼 텍스트 (예: "취소", "돌아가기") |
+| body | (선택) 본문 children 배열. 입력폼/파일선택/칩선택/테이블 등 자유 구성. body가 있으면 자동으로 Page Modal 스타일로 렌더 |
+| width | (선택) body가 있을 때 모달 너비. 기본: body 3개 미만 560, 이상 720. 대량 데이터는 1200 권장 |
 
-## 예시
+## 어떤 모달을 써야 하나
+
+- **body 없음** → published Modal(400px). 텍스트만으로 의사결정이 끝나는 확인/안내 (삭제 확인, 완료 안내 등)
+- **body 있음** → composite. width: 작음 480~560(자동) / 중간 720 / 큼 1200(Page Modal급)
+
+### body에 무엇을 넣을지
+**진짜 DS 컴포넌트를 우선 사용한다.** textfield/formgroup/chipgroup/table/tab/searchbar/filterbar 등.
+custom은 DS에 없는 비표준 UI(드래그 영역, 빈 상태 일러스트 등)에만 쓴다. text만 잔뜩 쌓지 말 것.
+
+### 절대 금지
+- body에 들어가야 할 본문을 description에 길게 풀어쓰기
+- 확인 모달인데 body를 억지로 채우기 (published Modal이 더 깔끔)
+- body 안에 custom > text를 도배 (실제 입력/선택 UI가 없는 모달은 모달이 아니다)
+
+## 예시 — 단순 확인 모달
 ```json
 { "type": "modal", "title": "송금 신청 확인",
   "description": "선택한 3건을 송금 신청합니다. 신청 후 취소가 불가합니다.",
   "ctaLabel": "신청하기", "dismissLabel": "취소" }
-{ "type": "modal", "title": "삭제 확인", "ctaLabel": "삭제", "dismissLabel": "취소" }
+```
+
+## 예시 — 본문 있는 모달 (Page Modal 스타일)
+파일 업로드:
+```json
+{ "type": "modal", "title": "Excel 파일 업로드",
+  "description": "다운로드한 템플릿에 데이터를 작성한 후 업로드하세요.",
+  "body": [
+    { "type": "custom", "frame": { "padding": 24, "background": "#F9FAFB", "cornerRadius": 8 },
+      "children": [{ "type": "text", "value": "여기에 파일을 끌어다 놓거나 클릭하여 선택", "color": "#5C5F66" }] }
+  ],
+  "ctaLabel": "업로드", "dismissLabel": "취소" }
+```
+
+오류 목록:
+```json
+{ "type": "modal", "title": "업로드 오류",
+  "description": "Excel 파일에 오류가 있습니다.",
+  "width": 720,
+  "body": [
+    { "type": "table", "rowCount": 3,
+      "columns": [{ "label": "시트", "width": 80, "type": "text" },
+                  { "label": "행", "width": 60, "type": "text" },
+                  { "label": "컬럼", "width": 120, "type": "text" },
+                  { "label": "오류 내용", "width": "fill", "type": "text" }] }
+  ],
+  "ctaLabel": "확인", "dismissLabel": "" }
 ```
 
 ---

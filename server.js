@@ -359,11 +359,62 @@ ${DESIGN_REFERENCE}
   - breadcrumb: 경로 탐색 (props: none)
     언제 써야 하나: 상세 페이지, 설정 하위 페이지 등 depth가 있는 페이지
   - modal: 모달 오버레이 — sections 최상위에 lnb/main과 같은 레벨로 추가
-    props: { title, description, ctaLabel, dismissLabel }
-    - title: 모달 제목 (행동 동사로 시작, 예: "송금 신청", "승인 확인", "삭제 확인")
-    - description: 사용자가 결정해야 할 내용 1-2줄 (예: "선택한 3건을 송금 신청합니다. 신청 후 취소가 불가합니다.")
-    - ctaLabel: 주요 액션 버튼 (예: "신청하기", "확인", "삭제")
-    - dismissLabel: 취소 버튼 (예: "취소", "돌아가기")
+    props: { title, description, ctaLabel, dismissLabel, body?, width? }
+    - body 없음 → published Modal(400px). 텍스트만으로 의사결정 끝나는 확인/안내용
+    - body 있음 → composite(흰 컨테이너+헤더+본문+푸터). width: 작음 480~560(자동) / 중간 720 / 큼 1200
+    - **body엔 진짜 DS 컴포넌트 우선 사용** (textfield, formgroup, chipgroup, table, tab, searchbar, filterbar 등).
+      custom은 DS에 없는 비표준 UI(드래그 영역 등)에만. text만 잔뜩 쌓지 말 것.
+    - description은 1-2줄 안내만. 본문 내용을 풀어쓰지 말 것.
+    예시(파일 선택 — 입력형):
+    { "type": "modal", "title": "Excel 파일 업로드",
+      "description": "다운로드한 템플릿에 데이터를 작성한 후 업로드하세요.",
+      "body": [
+        { "type": "custom", "frame": { "padding": 32, "background": "#F9FAFB", "cornerRadius": 8, "border": "#E6E9EB" },
+          "children": [{ "type": "text", "value": "📄 파일을 끌어다 놓거나 클릭하여 선택", "size": 14, "color": "#5C5F66" }] }
+      ],
+      "ctaLabel": "업로드", "dismissLabel": "취소" }
+    예시(옵션 선택 — DS 컴포넌트 위주):
+    { "type": "modal", "title": "Excel 템플릿 다운로드",
+      "description": "송금할 국가/통화 조합을 선택하세요.",
+      "body": [
+        { "type": "formgroup", "label": "Source Currency",
+          "field": { "type": "textfield", "placeholder": "KRW" } },
+        { "type": "searchbar", "size": "medium" },
+        { "type": "chipgroup", "items": [
+          { "label": "🇯🇵 JP/JPY", "selected": true }, { "label": "🇵🇭 PH/PHP" },
+          { "label": "🇻🇳 VN/VND" }, { "label": "🇺🇸 US/USD" }] }
+      ],
+      "ctaLabel": "다운로드", "dismissLabel": "취소" }
+    예시(오류 목록 — 테이블):
+    { "type": "modal", "title": "업로드 오류",
+      "description": "Excel 파일에 오류가 있습니다.",
+      "width": 720,
+      "body": [
+        { "type": "table", "rowCount": 5,
+          "columns": [{ "label": "시트", "width": 80, "type": "text" },
+                      { "label": "행", "width": 60, "type": "text" },
+                      { "label": "컬럼", "width": 120, "type": "text" },
+                      { "label": "오류 내용", "width": "fill", "type": "text" }] }
+      ],
+      "ctaLabel": "확인" }
+    예시(파일 업로드): { "type": "modal", "title": "Excel 파일 업로드",
+      "description": "다운로드한 템플릿에 데이터를 작성한 후 업로드하세요.",
+      "body": [
+        { "type": "custom", "frame": { "padding": 24, "background": "#F9FAFB", "cornerRadius": 8 },
+          "children": [{ "type": "text", "value": "여기에 파일을 끌어다 놓거나 클릭하여 선택", "color": "#5C5F66" }] }
+      ],
+      "ctaLabel": "업로드", "dismissLabel": "취소" }
+    예시(오류 목록): { "type": "modal", "title": "업로드 오류",
+      "description": "Excel 파일에 오류가 있습니다.",
+      "width": 720,
+      "body": [
+        { "type": "table", "rowCount": 3,
+          "columns": [{ "label": "시트", "width": 80, "type": "text" },
+                      { "label": "행", "width": 60, "type": "text" },
+                      { "label": "컬럼", "width": 120, "type": "text" },
+                      { "label": "오류 내용", "width": "fill", "type": "text" }] }
+      ],
+      "ctaLabel": "확인", "dismissLabel": "" }
 - 화면당 Primary 버튼 최대 1개. 나머지는 Secondary/Tertiary.
 - 한 영역에 동시 노출 선택지 4개 이하 유지 (버튼, 탭, 필터 등).
 - 매번 같은 레이아웃(Top+Table) 반복 금지. 화면 목적에 맞게 구성 변경.
